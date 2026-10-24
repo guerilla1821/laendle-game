@@ -36,7 +36,7 @@ const MapV={
     $('#tstats').innerHTML=`<div><strong>${lv(B.length)}</strong><span>Gebäude</span></div><div><strong>${DATA.gems.length}</strong><span>Gemeinden</span></div><div><strong>${lv(DATA.streets.length)}</strong><span>Strassen</span></div>`;
     this.relief=new Image();this.relief.onload=()=>{this.dirty=true;};this.relief.src='data/relief.png';this.foot=Tiles.foot;
     Tiles.listeners.push(()=>{this.dirty=true;});
-    this.layers={oev:true,wander:true,velo:true,kultur:true};[['lyOev','oev'],['lyWander','wander'],['lyVelo','velo'],['lyKultur','kultur']].forEach(([id,k])=>{const el=$('#'+id);if(el)el.onchange=()=>{this.layers[k]=el.checked;this.dirty=true;};});
+    this.layers={oev:true,wander:true,velo:true,kultur:true,pers:false,jobs:false};[['lyOev','oev'],['lyWander','wander'],['lyVelo','velo'],['lyKultur','kultur'],['lyPers','pers'],['lyJobs','jobs']].forEach(([id,k])=>{const el=$('#'+id);if(el)el.onchange=()=>{this.layers[k]=el.checked;this.dirty=true;};});
     this.bindInput();addEventListener('resize',()=>this.resize());this.resize();this.fit(true);
     const loop=t=>{this.tick(t);requestAnimationFrame(loop);};requestAnimationFrame(loop);
   },
@@ -99,6 +99,7 @@ const MapV={
       <dl class="meta"><dt>Ort</dt><dd>${esc(place(b))}</dd><dt>Kategorie</dt><dd>${esc(DATA.cats[b[2]])}</dd><dt>Gebäude-ID</dt><dd>GEID ${b[7]}</dd><dt>Parzelle</dt><dd>${esc(b[8]||'k. A.')}</dd><dt>LV95</dt><dd>${lv(b[0]+DATA.origin[0])} / ${lv(b[1]+DATA.origin[1])}</dd>${(()=>{if(!Tiles.ok)return '';const id=Tiles.idAt(b[0],b[1]);const f=Tiles.buildingByEgid(b[7]);
         if(!Tiles.cache.has(id)||!Tiles.terr.has(id)){Promise.all([Tiles.get(id),Tiles.terrain(id)]).then(()=>{if(this.sel===i)this.select(i,false);});return '<dt>Vermessung</dt><dd>wird geladen …</dd>';}
         const hh=Tiles.hAt(b[0],b[1]);return (f?`<dt>Grundfläche</dt><dd>${lv(f.area)} m²</dd><dt>Höhe</dt><dd>ca. ${Math.round(f.h)} m${f.hsrc==='estimate'?', geschätzt':''}</dd>`:'')+(isNaN(hh)?'':`<dt>Gelände</dt><dd>${Math.round(hh)} m ü. M.</dd>`);})()}</dl>
+      ${(()=>{const c=Density.at(b[0],b[1]);return c?`<div class="hint">In diesem Hektar: ${esc(c.pc||'keine')} Einwohner, ${esc(c.jc||'keine')} Arbeitsplätze (Amt für Statistik, Stand ${esc(Density.stand||'')})</div>`:'';})()}
       ${(()=>{const vs=Vereine.of(DATA.gems[b[3]]).filter(v=>v.gemeinde!=='Liechtenstein');if(!vs.length)return '';return `<details class="vereine"><summary>${vs.length} Vereine in ${esc(DATA.gems[b[3]])}</summary><ul>${vs.map(v=>`<li>${esc(v.name)} <small>${esc(v.kategorie||'')}</small></li>`).join('')}</ul></details>`;})()}
       <button class="btn" id="moveIn" ${res?'':'disabled'}>Hier einziehen</button>${res?'':'<div class="hint">Kein Wohngebäude. Wähle eine Adresse mit Wohnnutzung.</div>'}`;
     $('#moveIn').onclick=()=>FamilyDlg.open(i);
@@ -122,6 +123,10 @@ const MapV={
     if(detail){g.setLineDash([6,4]);for(const t of vt)for(const r of t.trails){const hike=r.kind==='hiking'||r.kind==='foot';if(hike?!this.layers.wander:!this.layers.velo)continue;g.strokeStyle=hike?'#d9a400':'#2a7fd4';g.lineWidth=hike?2.2:2.6;for(const l of r.lines){this.line(l);g.stroke();}}g.setLineDash([]);}
     if(Transit.data&&s>.06&&this.layers.oev){g.lineCap='round';g.lineJoin='round';for(const r of Transit.data.routes){if(!r.pieces.length)continue;g.strokeStyle=r.color||(Transit.isTrain(r)?'#39404f':'#c41f3a');g.globalAlpha=.55;g.lineWidth=Transit.isTrain(r)?3:2;for(const pc of r.pieces){this.line(pc.p);g.stroke();}}g.globalAlpha=1;
       if(s>.35){g.fillStyle='#fff';g.strokeStyle='#18223a';g.lineWidth=1.5;for(const st of Transit.data.stops){const[sx,sy]=this.w2s(st.x,st.y);if(sx<-5||sy<-5||sx>W+5||sy>H+5)continue;g.beginPath();g.arc(sx,sy,s>1.5?5:3.2,0,7);g.fill();g.stroke();}}}
+    // Dichte je Hektar
+    if(Density.cells&&(this.layers.pers||this.layers.jobs)){const pal=['#fde4a5','#f9c46b','#f08a3e','#d6452c','#8f1d2c'];const cs=100*s;
+      for(const c of Density.cells){const v=this.layers.pers?c.p:c.j;if(!v)continue;const[sx,sy]=this.w2s(c.hx*100-O0[0],c.hy*100+100-O0[1]);if(sx>W||sy>H||sx+cs<0||sy+cs<0)continue;
+        const k=this.layers.pers?(v<5?0:v<9?1:v<30?2:v<50?3:4):(v<10?0:v<30?1:v<50?2:v<250?3:4);g.fillStyle=pal[k];g.globalAlpha=.6;g.fillRect(sx,sy,Math.max(1,cs-.5),Math.max(1,cs-.5));}g.globalAlpha=1;}
     // Gebäude
     const sz=clamp(11*s,1.5,60),h=sz/2,B=DATA.b;
     for(let c=5;c>=0;c--){g.fillStyle=CAT_COL[c];const L=this.byCat[c];
@@ -252,6 +257,7 @@ const Game={
       if(best){const dx=best[0]-ax,dy=best[1]-ay;const zf=-(-dx*Math.sin(th)+dy*Math.cos(th));if(zf<0)th+=Math.PI;}
       const h0=Tiles.hAt(ax,ay);const ht=TL.find(t=>t.id===Tiles.idAt(ax,ay));this.horizon=ht&&ht.horizon;
       this.real={TL,ax,ay,th,h0:isNaN(h0)?0:h0,hasTerr:!isNaN(h0),foot:f};}
+    if(this.amb)for(const p of this.amb.peds)if(p)this.scene.remove(p.m.root);
     this.busPool=[];this.precip=null;
     // Boden
     const ground=new THREE.Mesh(new THREE.PlaneGeometry(1600,1600),mat(0x93b46c));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;W.add(ground);ground.userData.ground=true;this.ground=ground;
@@ -333,7 +339,7 @@ const Game={
       const ob=obb(pts);if(o.roof?o.roof!=='flat'&&o.area/ob.A>.7:(o.area<650&&o.area/ob.A>.8&&cat!==3&&o.area>=30)){const rh=Math.min(4.2,ob.d*.42);const rf=new THREE.Mesh(this.gable(ob.w+.8,ob.d+.9,rh),new THREE.MeshLambertMaterial({color:roofs[Math.floor(r()*4)],side:THREE.DoubleSide}));
         rf.position.set(ob.cx,top,ob.cz);rf.rotation.y=-ob.ang;rf.castShadow=true;rf.userData.nb=o.bi;W.add(rf);pick.push(rf);}}
     this.nbPick=pick;
-    this.buildSigns(W);this.buildPois(W);this.buildStops(W);
+    this.buildSigns(W);this.buildPois(W);this.buildStops(W);this.buildAmbient();
   },
   /* ---------- Beschilderung, Orte, Haltestellen, Fahrzeuge ---------- */
   signTex(kind,value){this._st=this._st||new Map();const key=kind+'|'+(value||'');if(this._st.has(key))return this._st.get(key);
@@ -409,6 +415,42 @@ const Game={
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));
     const col=[0xff4d6d,0xffd166,0x06d6a0,0x4cc9f0,0xffffff,0xc77dff][Math.floor(Math.random()*6)];
     const pts=new THREE.Points(g,new THREE.PointsMaterial({color:col,size:4.5,map:this.sparkTex(),alphaTest:.02,transparent:true,opacity:1,depthWrite:false,fog:false,blending:THREE.AdditiveBlending}));this.scene.add(pts);this.fw.bursts.push({pts,vel,n,age:0});},
+  /* ---------- Belebte Strassen: Autos und Fussgänger nach Dichte und Tageszeit ---------- */
+  buildAmbient(){const R=this.real;this.amb={cars:[],peds:[],roads:[],walks:[],P:0,J:0};if(!R)return;
+    const CAR=['motorway','trunk','primary','secondary','tertiary','unclassified','residential','living_street','service','primary_link','secondary_link','tertiary_link'],
+          WALK=['residential','living_street','footway','pedestrian','path','service','unclassified','tertiary','secondary','primary','steps','track'];
+    const mk=l=>{const p=[];for(let i=0;i<l.length;i+=2){const[X,Z]=R.toS(l[i],l[i+1]);p.push(X,Z);}const cum=[0];for(let k=2;k<p.length;k+=2)cum.push(cum[cum.length-1]+Math.hypot(p[k]-p[k-2],p[k+1]-p[k-1]));return{p,cum,len:cum[cum.length-1]};};
+    for(const t of R.TL)for(const r of t.roads)for(const l of r.lines){const pl=mk(l);if(pl.len<25)continue;let near=false;for(let i=0;i<pl.p.length;i+=2)if(pl.p[i]**2+pl.p[i+1]**2<260*260){near=true;break;}if(!near)continue;
+      pl.v=Math.min(parseFloat(r.maxspeed)||50,50)/3.6;if(CAR.includes(r.hw))this.amb.roads.push(pl);if(WALK.includes(r.hw))this.amb.walks.push(pl);}
+    const d=Density.around(R.ax,R.ay,300);this.amb.P=d.p;this.amb.J=d.j;},
+  ambTargets(){const tod=(this.min%1440)/60,dow=this.dowOf(Math.floor(this.min/1440)),hol=Cal.holidayOn(this.isoOf(Math.floor(this.min/1440)));
+    const wk=dow<5&&!(hol&&hol.frei);const curve=(pts)=>{for(let i=1;i<pts.length;i++)if(tod<=pts[i][0]){const[a,va]=pts[i-1],[b,vb]=pts[i];return va+(vb-va)*(tod-a)/(b-a);}return pts[pts.length-1][1];};
+    const traffic=wk?curve([[0,.05],[5,.15],[7,1.1],[8,1.2],[9,.7],[12,.65],[13,.7],[16,.9],[17.5,1.2],[19,.6],[22,.2],[24,.05]]):curve([[0,.05],[8,.2],[11,.6],[17,.6],[20,.3],[24,.05]]);
+    const walk=curve([[0,.02],[6,.1],[8,.6],[12,.8],[17,1],[20,.5],[22,.15],[24,.02]]);const rain=this.wx&&this.wx.precip>.3?.4:1;
+    const A=this.amb;return{cars:A.roads.length?clamp(Math.round((A.P+A.J)/90*traffic),traffic>.3?2:0,26):0,peds:A.walks.length?clamp(Math.round(A.P/60*walk*rain),0,22):0};},
+  makeCar(){const g=new THREE.Group(),col=[0xe9ecef,0x1c1f24,0x6b7280,0xa61e2d,0x1d4f9c,0xd9d2c3,0x2f5d3a][Math.floor(Math.random()*7)];
+    const b=new THREE.Mesh(new THREE.BoxGeometry(1.8,.75,4.3),new THREE.MeshLambertMaterial({color:col}));b.position.y=.6;b.castShadow=true;g.add(b);
+    const c=new THREE.Mesh(new THREE.BoxGeometry(1.6,.6,2.2),this.mat(0x2a333d));c.position.set(0,1.25,-.2);g.add(c);
+    const hl=new THREE.MeshBasicMaterial({color:0xfff2c0}),tl=new THREE.MeshBasicMaterial({color:0xd0202e});
+    [-.6,.6].forEach(x=>{const h=new THREE.Mesh(new THREE.BoxGeometry(.3,.15,.05),hl);h.position.set(x,.65,2.16);g.add(h);const t=new THREE.Mesh(new THREE.BoxGeometry(.3,.15,.05),tl);t.position.set(x,.65,-2.16);g.add(t);});
+    return g;},
+  makePed(){const s={shirt:Math.floor(Math.random()*SHIRTS.length),hair:Math.floor(Math.random()*HAIRS.length),skin:Math.floor(Math.random()*SKINS.length)};const m=this.makeSim(s);m.ring.visible=false;return m;},
+  spawnAgent(kind){const A=this.amb,list=kind==='car'?A.roads:A.walks;if(!list.length)return null;const pl=list[Math.floor(Math.random()*list.length)];
+    const a={kind,pl,d:Math.random()*pl.len,dir:Math.random()<.5?1:-1,v:kind==='car'?pl.v*(.75+Math.random()*.35):1.1+Math.random()*.5,ph:Math.random()*6};
+    a.m=kind==='car'?this.makeCar():this.makePed();(kind==='car'?this.world:this.scene).add(kind==='car'?a.m:a.m.root);return a;},
+  tickAmbient(dt){const A=this.amb;if(!A||!this.real)return;const R=this.real;
+    A.t=(A.t||0)-dt;if(A.t<=0){A.t=1.5;const T=this.ambTargets();
+      if(A.cars.length<T.cars)A.cars.push(this.spawnAgent('car'));else if(A.cars.length>T.cars){const c=A.cars.pop();if(c)this.world.remove(c.m);}
+      if(A.peds.length<T.peds)A.peds.push(this.spawnAgent('ped'));else if(A.peds.length>T.peds){const p=A.peds.pop();if(p)this.scene.remove(p.m.root);}
+      A.cars=A.cars.filter(Boolean);A.peds=A.peds.filter(Boolean);}
+    const k=this.speed>0?Math.min(2,[0,1,1.4,1.8][this.speed]):0,night=this.sunInfo&&this.sunInfo.sun.alt<-3;
+    const move=(a)=>{const pl=a.pl;a.d+=a.dir*a.v*dt*k;if(a.d<0||a.d>pl.len){if(Math.random()<.5){a.dir*=-1;a.d=clamp(a.d,0,pl.len);}else{const list=a.kind==='car'?A.roads:A.walks;a.pl=list[Math.floor(Math.random()*list.length)];a.d=a.dir>0?0:a.pl.len;}}
+      const c=a.pl.cum,p=a.pl.p;let lo=0,hi=c.length-1;while(hi-lo>1){const m=(lo+hi)>>1;if(c[m]<=a.d)lo=m;else hi=m;}const f=(a.d-c[lo])/((c[hi]-c[lo])||1);
+      let x=p[lo*2]+(p[hi*2]-p[lo*2])*f,z=p[lo*2+1]+(p[hi*2+1]-p[lo*2+1])*f;let dx=(p[hi*2]-p[lo*2])*a.dir,dz=(p[hi*2+1]-p[lo*2+1])*a.dir;const L=Math.hypot(dx,dz)||1;dx/=L;dz/=L;
+      const off=a.kind==='car'?1.7:3.6;x+=-dz*off;z+=dx*off;return[x,z,Math.atan2(dx,dz)];};
+    for(const a of A.cars){const[x,z,ang]=move(a);const inLot=Math.abs(x)<13.5&&Math.abs(z)<11.5;a.m.visible=!inLot;a.m.position.set(x,R.yAt(x,z),z);a.m.rotation.y=ang;}
+    for(const a of A.peds){const[x,z,ang]=move(a);const inLot=Math.abs(x)<13.5&&Math.abs(z)<11.5,m=a.m;m.root.visible=!inLot;m.root.position.set(x,R.yAt(x,z),z);m.root.rotation.y=ang;
+      a.ph+=a.v*dt*k*3.2;const sw=Math.sin(a.ph)*.5*(k>0?1:0);m.L.rotation.x=sw;m.R.rotation.x=-sw;m.AL.rotation.x=-sw*.8;m.AR.rotation.x=sw*.8;}},
   clubPlan(kat){const k=(kat||'').toLowerCase();if(k.includes('sport'))return{days:[1,3],start:1140,end:1230,label:'Di und Do 19:00 bis 20:30'};if(k.includes('musik')||k.includes('kultur'))return{days:[2],start:1170,end:1290,label:'Mi 19:30 bis 21:30'};
     if(k.includes('feuerwehr')||k.includes('rettung'))return{days:[0],start:1170,end:1290,label:'Mo 19:30 bis 21:30'};return{days:[4],start:1140,end:1260,label:'Fr 19:00 bis 21:00'};},
   tickClubs(day,dow,tod){for(const s of this.sims){if(!s.verein)continue;const pl=this.clubPlan(s.verein.kategorie);s.clubDone=s.clubDone||{};
@@ -590,7 +632,7 @@ const Game={
   frame(dt){const gm=dt*[0,1,3,8][this.speed];
     if(gm>0)this.tickTime(gm);
     for(const s of this.sims)this.tickSim(s,gm,dt);
-    this.updateCamera();this.updateLight();this.tickTransit();this.tickPrecip(dt);this.tickFireworks(dt);this.R.render(this.scene,this.cam);this.updateBubbles();
+    this.updateCamera();this.updateLight();this.tickTransit();this.tickPrecip(dt);this.tickFireworks(dt);this.tickAmbient(dt);this.R.render(this.scene,this.cam);this.updateBubbles();
     this.uiT=(this.uiT||0)+dt;if(this.uiT>.25){this.uiT=0;this.renderPanel();this.renderClock();}},
   isoOf(day){const[y,m,d]=(this.startDay||Astro.todayVaduz()).split('-').map(Number);return new Date(Date.UTC(y,m-1,d)+day*864e5).toISOString().slice(0,10);},
   dowOf(day){return(new Date(this.isoOf(day)+'T12:00:00Z').getUTCDay()+6)%7;},
@@ -735,7 +777,7 @@ const Game={
    ===================================================================== */
 function start(){
   fetch('data/gwr.json').then(r=>{if(!r.ok)throw new Error(r.status);return r.json();}).then(d=>{DATA=d;MapV.init();$('#loadMsg').textContent='Lade Vermessung, Fahrplan und Wetter …';
-    Tiles.init().then(ok=>{$('#loadMsg').textContent=ok?'':'Vermessungsdaten nicht erreichbar, Umgebung wird generiert.';if(ok){Transit.load().then(()=>MapV.dirty=true);Weather.load();Vereine.load().then(()=>{if(MapV.sel>=0)MapV.select(MapV.sel,false);});}showSave();MapV.dirty=true;});
+    Tiles.init().then(ok=>{$('#loadMsg').textContent=ok?'':'Vermessungsdaten nicht erreichbar, Umgebung wird generiert.';if(ok){Transit.load().then(()=>MapV.dirty=true);Weather.load();Vereine.load().then(()=>{if(MapV.sel>=0)MapV.select(MapV.sel,false);});Density.load().then(()=>{MapV.dirty=true;});}showSave();MapV.dirty=true;});
     setInterval(()=>{Weather.load().then(()=>{Game.wxKey=null;});},30*60*1000);
     const showSave=()=>{const sv=store.get(SAVE_KEY);if(sv&&DATA.b[sv.bIdx]){$('#contBtn').hidden=false;const b=DATA.b[sv.bIdx];$('#contBtn').textContent=`Weiterspielen: Familie ${sv.family}`;$('#loadMsg').textContent=`Gespeichert: ${addr(b)}, ${DATA.gems[b[3]]}`;MapV.home=sv.bIdx;$('#contBtn').onclick=()=>Game.load(sv);}};
     $('#newBtn').onclick=()=>{$('#title').hidden=true;$('#q').focus({preventScroll:true});};

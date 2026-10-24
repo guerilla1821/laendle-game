@@ -28,4 +28,4 @@ Lokal: `python3 -m http.server` im Ordner starten und `http://localhost:8000` ö
 Gebäude- und Wohnungsregister (Amt für Statistik, Liechtenstein) · Amtliche Vermessung und Reliefkarte
 (Amt für Tiefbau und Geoinformation, Liechtenstein) · swissALTI3D © swisstopo · © OpenStreetMap-Mitwirkende (ODbL) ·
 Fahrplandaten opentransportdata.swiss · Copernicus DEM GLO-30 · Wetter Open-Meteo.com (CC BY 4.0) ·
-Föhnindex MeteoSchweiz · Vereinsverzeichnisse der Gemeinden und bewegt.li · Schulferien nach LR 411.201 · Sonnenstand nach SunCalc (V. Agafonkin, BSD)
+Föhnindex MeteoSchweiz · Bevölkerungs- und Arbeitsplatzdichte (Amt für Statistik) · Vereinsverzeichnisse der Gemeinden und bewegt.li · Schulferien nach LR 411.201 · Sonnenstand nach SunCalc (V. Agafonkin, BSD)

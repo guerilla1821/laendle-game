@@ -242,3 +242,26 @@ const Vereine = {
   },
   of(gem) { return this.list.filter(v => (v.gemeinde || '').startsWith(gem) || v.gemeinde === 'Liechtenstein'); },
 };
+
+/* ---------- Bevölkerungs- und Arbeitsplatzdichte (Hektarraster) ---------- */
+const Density = {
+  cells: null, map: new Map(), stand: null,
+  async load() {
+    const f = Tiles.ok && Tiles.index.files && Tiles.index.files.dichte;
+    if (!f) return null;
+    try {
+      const j = await (await fetch(CFG.dataBase + f.path)).json();
+      this.stand = j.stand;
+      this.cells = j.cells.map(c => ({ hx: c[0], hy: c[1], x: c[0] * 100 + 50 - O0[0], y: c[1] * 100 + 50 - O0[1], p: c[2], j: c[3], pc: c[4], jc: c[5] }));
+      for (const c of this.cells) this.map.set(c.hx + ',' + c.hy, c);
+    } catch (e) { console.warn('Dichte', e); }
+    return this.cells;
+  },
+  at(x, y) { return this.map.get(Math.floor((x + O0[0]) / 100) + ',' + Math.floor((y + O0[1]) / 100)) || null; },
+  around(x, y, r) {
+    let p = 0, j = 0; if (!this.cells) return { p, j };
+    const hx0 = Math.floor((x - r + O0[0]) / 100), hx1 = Math.floor((x + r + O0[0]) / 100), hy0 = Math.floor((y - r + O0[1]) / 100), hy1 = Math.floor((y + r + O0[1]) / 100);
+    for (let hx = hx0; hx <= hx1; hx++) for (let hy = hy0; hy <= hy1; hy++) { const c = this.map.get(hx + ',' + hy); if (c && (c.x - x) ** 2 + (c.y - y) ** 2 <= r * r) { p += c.p; j += c.j; } }
+    return { p, j };
+  },
+};
