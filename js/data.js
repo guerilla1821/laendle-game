@@ -89,7 +89,7 @@ const Tiles = {
       id, ox, oy, bld, lc,
       parcels: (j.parcels || []).map(p => withBB({ n: p.nr, polys: polys(p.geom) })),
       objects: (j.objects || []).map(o => withBB({ art: o.art, polys: polys(o.geom) })),
-      roads: (j.roads || []).map(r => ({ name: r.name, hw: r.hw, maxspeed: r.maxspeed, lanes: r.lanes, lines: lines(r.geom) })),
+      roads: (j.roads || []).map(r => ({ name: r.name, hw: r.hw, maxspeed: r.maxspeed, lanes: r.lanes, oneway: r.oneway, bridge: r.bridge, tunnel: r.tunnel, layer: r.layer, lines: lines(r.geom) })),
       streets: (j.streets || []).map(r => ({ name: r.name, lines: lines(r.geom) })),
       water: (j.water || []).map(r => ({ name: r.name, lines: lines(r.geom) })),
       rail: (j.rail || []).map(r => ({ lines: lines(r.geom) })),

@@ -21,7 +21,7 @@ function toast(msg){const t=document.createElement('div');t.className='toast';t.
    LANDESKARTE
    ===================================================================== */
 const MapV={
-  s:.03,cx:0,cy:0,W:0,H:0,dpr:1,sel:-1,hover:-1,dirty:true,home:-1,anim:null,
+  mode:'house',s:.03,cx:0,cy:0,W:0,H:0,dpr:1,sel:-1,hover:-1,dirty:true,home:-1,anim:null,
   init(){
     const c=this.c=$('#mapc');this.ctx=c.getContext('2d');
     const B=DATA.b;let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
@@ -101,8 +101,8 @@ const MapV={
         const hh=Tiles.hAt(b[0],b[1]);return (f?`<dt>Grundfläche</dt><dd>${lv(f.area)} m²</dd><dt>Höhe</dt><dd>ca. ${Math.round(f.h)} m${f.hsrc==='estimate'?', geschätzt':''}</dd>`:'')+(isNaN(hh)?'':`<dt>Gelände</dt><dd>${Math.round(hh)} m ü. M.</dd>`);})()}</dl>
       ${(()=>{const c=Density.at(b[0],b[1]);return c?`<div class="hint">In diesem Hektar: ${esc(c.pc||'keine')} Einwohner, ${esc(c.jc||'keine')} Arbeitsplätze (Amt für Statistik, Stand ${esc(Density.stand||'')})</div>`:'';})()}
       ${(()=>{const vs=Vereine.of(DATA.gems[b[3]]).filter(v=>v.gemeinde!=='Liechtenstein');if(!vs.length)return '';return `<details class="vereine"><summary>${vs.length} Vereine in ${esc(DATA.gems[b[3]])}</summary><ul>${vs.map(v=>`<li>${esc(v.name)} <small>${esc(v.kategorie||'')}</small></li>`).join('')}</ul></details>`;})()}
-      <button class="btn" id="moveIn" ${res?'':'disabled'}>Hier einziehen</button>${res?'':'<div class="hint">Kein Wohngebäude. Wähle eine Adresse mit Wohnnutzung.</div>'}`;
-    $('#moveIn').onclick=()=>FamilyDlg.open(i);
+      ${this.mode==='drive'?`<button class="btn red" id="driveHere">Hier losfahren</button><div class="hint">Du startest auf der nächsten Strasse bei dieser Adresse.</div>`:`<button class="btn" id="moveIn" ${res?'':'disabled'}>Hier einziehen</button>${res?'':'<div class="hint">Kein Wohngebäude. Wähle eine Adresse mit Wohnnutzung.</div>'}`}`;
+    if(this.mode==='drive')$('#driveHere').onclick=()=>Drive.start(i);else $('#moveIn').onclick=()=>FamilyDlg.open(i);
     if(fly)this.flyTo(i);},
   tick(t){if($('#mapScreen').hidden)return;
     if(this.anim){const a=this.anim;let k=clamp((t-a.t0)/a.d,0,1);k=k<.5?2*k*k:1-(-2*k+2)**2/2;this.cx=lerp(a.from[0],a.to[0],k);this.cy=lerp(a.from[1],a.to[1],k);this.s=Math.exp(lerp(a.from[2],a.to[2],k));this.dirty=true;if(k>=1)this.anim=null;}
@@ -780,7 +780,8 @@ function start(){
     Tiles.init().then(ok=>{$('#loadMsg').textContent=ok?'':'Vermessungsdaten nicht erreichbar, Umgebung wird generiert.';if(ok){Transit.load().then(()=>MapV.dirty=true);Weather.load();Vereine.load().then(()=>{if(MapV.sel>=0)MapV.select(MapV.sel,false);});Density.load().then(()=>{MapV.dirty=true;});}showSave();MapV.dirty=true;});
     setInterval(()=>{Weather.load().then(()=>{Game.wxKey=null;});},30*60*1000);
     const showSave=()=>{const sv=store.get(SAVE_KEY);if(sv&&DATA.b[sv.bIdx]){$('#contBtn').hidden=false;const b=DATA.b[sv.bIdx];$('#contBtn').textContent=`Weiterspielen: Familie ${sv.family}`;$('#loadMsg').textContent=`Gespeichert: ${addr(b)}, ${DATA.gems[b[3]]}`;MapV.home=sv.bIdx;$('#contBtn').onclick=()=>Game.load(sv);}};
-    $('#newBtn').onclick=()=>{$('#title').hidden=true;$('#q').focus({preventScroll:true});};
+    const pick=m=>{MapV.mode=m;$('#title').hidden=true;$('#modeHint').textContent=m==='drive'?'Fahrmodus: Wähle die Startadresse.':'Lebensmodus: Wähle ein Wohnhaus.';$('#modeHint').hidden=false;if(MapV.sel!=null&&MapV.sel>=0)MapV.select(MapV.sel,false);$('#q').focus({preventScroll:true});};
+    $('#newBtn').onclick=()=>pick('house');$('#driveBtn').onclick=()=>pick('drive');$('#modeHint').onclick=()=>{$('#title').hidden=false;};
   }).catch(e=>{$('#loadMsg').textContent='Das Gebäuderegister konnte nicht geladen werden. Bitte Seite neu laden.';console.error(e);});
 }
 start();

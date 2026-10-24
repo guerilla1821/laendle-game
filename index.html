@@ -147,6 +147,38 @@ details.vereine{font-size:13px}details.vereine summary{cursor:pointer;color:var(
 details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:auto}details.vereine small{color:var(--muted)}
 #loadOverlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(238,242,245,.7);z-index:20;font-family:var(--display);font-size:20px;font-weight:700}
 @media (max-width:760px){.wx{max-width:100%;order:9;flex-basis:100%}}
+
+.ask{margin:14px 0 8px}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.mode{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;padding:14px;border-radius:12px;border:1px solid var(--line);background:#fff;cursor:pointer;font:inherit;color:inherit}
+.mode:hover{border-color:var(--red);box-shadow:0 6px 18px rgba(196,31,58,.15)}
+.mode .mi{font-size:26px}.mode small{color:#5b6576;line-height:1.35}
+@media(max-width:520px){.modes{grid-template-columns:1fr}}
+.modeHint{margin-top:8px;border:1px dashed var(--red);background:#fff5f6;color:var(--red);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px;cursor:pointer;text-align:left}
+#driveScreen{background:#0c1426;touch-action:none}
+#dc{position:absolute;inset:0;width:100%;height:100%;display:block}
+#dTop{top:10px;left:10px;right:10px;display:flex;align-items:center;gap:10px;padding:6px 10px;flex-wrap:wrap}
+#dStreet{font-weight:700;flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#dWx{font-size:13px;color:#4a5466}#dWx .foehn{color:var(--red);font-weight:700}
+#dMap{position:absolute;right:12px;bottom:12px;width:150px;height:150px;border-radius:50%;border:3px solid rgba(255,255,255,.85);box-shadow:0 6px 20px rgba(0,0,0,.3)}
+#dGauge{position:absolute;left:12px;bottom:12px;display:flex;align-items:center;gap:10px;background:rgba(24,34,58,.78);color:#fff;border-radius:14px;padding:8px 14px}
+#dGauge #dSpeed{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums}#dGauge small{margin-left:4px;opacity:.8}
+#dLimit{width:42px;height:42px;border-radius:50%;background:#fff;border:5px solid #d0202e;color:#111;display:grid;place-items:center;font-weight:800;font-size:15px}
+#dLimit.over{animation:blink .6s infinite}@keyframes blink{50%{background:#ffd5d9}}
+#dKeys{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);color:#fff;font-size:12px;background:rgba(0,0,0,.35);padding:4px 10px;border-radius:8px;white-space:nowrap}
+#dTouch{display:none}
+#dTop .sm{display:none}
+@media(max-width:700px){#dTop{gap:6px;padding:5px 8px}#dTop .lg{display:none}#dTop .sm{display:inline}#dWx{order:9;flex-basis:100%;font-size:12px}#dStreet{font-size:14px}}
+@media (pointer:coarse){
+  #dKeys{display:none}
+  #dTouch{display:flex;justify-content:space-between;position:absolute;left:12px;right:12px;bottom:12px;pointer-events:none}
+  #dTouch .pad{display:flex;gap:10px;pointer-events:auto}
+  #dTouch button{width:68px;height:68px;border-radius:50%;border:2px solid rgba(255,255,255,.7);background:rgba(24,34,58,.55);color:#fff;font-size:24px;touch-action:none;user-select:none;-webkit-user-select:none}
+  #dTouch button.sm{width:52px;height:52px;align-self:flex-end;font-size:18px}
+  #dTouch button.on{background:rgba(196,31,58,.8)}
+  #dGauge{bottom:96px}#dMap{bottom:96px;width:110px;height:110px}
+  #dTop .tbtn#dTime{display:none}
+}
 </style>
 </head>
 <body>
@@ -161,7 +193,8 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
     <aside id="panel">
       <div>
         <div class="brand"><span class="flag"></span>Ländle <b>Leben</b></div>
-        <div class="sub">Wähle eine echte Wohnadresse in Liechtenstein und zieh mit deiner Familie ein.</div>
+        <div class="sub">Wähle eine echte Adresse in Liechtenstein.</div>
+        <button id="modeHint" class="modeHint" hidden title="Modus wechseln"></button>
       </div>
       <div class="field">
         <label for="q" class="lbl">Adresse suchen</label>
@@ -191,9 +224,14 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
       <div class="tcard">
         <div class="lbl"><span class="flag"></span>Prototyp 0.2</div>
         <h1>Ländle <b>Leben</b></h1>
-        <p>Eine Lebenssimulation auf den echten Gebäuden Liechtensteins. Echtes Gelände, echte Grundrisse, Busse nach Fahrplan, Live-Wetter mit Föhn und der Sonnenstand über den echten Bergen. Such dir eine Adresse aus und gründe eine Familie.</p>
+        <p>Ganz Liechtenstein aus echten Daten: echtes Gelände, echte Grundrisse, echte Strassen mit Schildern, Busse nach Fahrplan, Live-Wetter mit Föhn und der Sonnenstand über den echten Bergen.</p>
         <div class="tstats" id="tstats"></div>
-        <div class="trow"><button id="newBtn" class="btn red">Neues Spiel</button><button id="contBtn" class="btn ghost" hidden>Weiterspielen</button></div>
+        <p class="ask"><b>Wie willst du Liechtenstein erleben?</b></p>
+        <div class="modes">
+          <button id="newBtn" class="mode"><span class="mi">🏠</span><b>Ein Haus bewohnen</b><small>Familie gründen, Alltag leben, Vereine, Wandern</small></button>
+          <button id="driveBtn" class="mode"><span class="mi">🚗</span><b>Herumfahren</b><small>Startadresse wählen und frei durchs Land fahren, mit Verkehr</small></button>
+        </div>
+        <div class="trow"><button id="contBtn" class="btn ghost" hidden>Weiterspielen</button></div>
         <p class="hint" id="loadMsg">Lade Gebäuderegister …</p>
       </div>
     </div>
@@ -225,6 +263,25 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
     <div id="gAttr"></div>
   </section>
 
+  <section id="driveScreen" class="screen" hidden>
+    <canvas id="dc"></canvas>
+    <div id="dTop" class="hud">
+      <button class="tbtn" id="dExit">‹ Karte</button>
+      <div id="dStreet">…</div>
+      <div id="dWx"></div>
+      <button class="tbtn" id="dTime" title="Uhrzeit +1 h (T)">+1 h</button>
+      <button class="tbtn" id="dCam" title="Kamera wechseln (C)"><span class="lg">Kamera</span><span class="sm">🎥</span></button>
+      <button class="tbtn" id="dReset" title="Zurück auf die Strasse (R)"><span class="lg">Auf Strasse</span><span class="sm">↺</span></button>
+    </div>
+    <canvas id="dMap" width="180" height="180"></canvas>
+    <div id="dGauge"><div id="dLimit" title="Höchstgeschwindigkeit">–</div><div><span id="dSpeed">0</span><small>km/h</small></div></div>
+    <div id="dKeys">W A S D oder Pfeile · Leertaste bremst · C Kamera · R Strasse · T Zeit · Esc Karte</div>
+    <div id="dTouch">
+      <div class="pad"><button data-k="l" aria-label="Links">◀</button><button data-k="r" aria-label="Rechts">▶</button></div>
+      <div class="pad"><button data-k="hb" aria-label="Handbremse" class="sm">⏸</button><button data-k="b" aria-label="Bremsen und rückwärts">▼</button><button data-k="g" aria-label="Gas">▲</button></div>
+    </div>
+  </section>
+
   <div id="modal" hidden></div>
   <div id="loadOverlay" hidden>Lade die Umgebung …</div>
   <div id="toasts" aria-live="polite"></div>
@@ -236,5 +293,6 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
 <script src="js/calendar.js"></script>
 <script src="js/data.js"></script>
 <script src="js/game.js"></script>
+<script src="js/drive.js"></script>
 </body>
 </html>
