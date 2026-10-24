@@ -781,7 +781,7 @@ function start(){
     setInterval(()=>{Weather.load().then(()=>{Game.wxKey=null;});},30*60*1000);
     const showSave=()=>{const sv=store.get(SAVE_KEY);if(sv&&DATA.b[sv.bIdx]){$('#contBtn').hidden=false;const b=DATA.b[sv.bIdx];$('#contBtn').textContent=`Weiterspielen: Familie ${sv.family}`;$('#loadMsg').textContent=`Gespeichert: ${addr(b)}, ${DATA.gems[b[3]]}`;MapV.home=sv.bIdx;$('#contBtn').onclick=()=>Game.load(sv);}};
     const pick=m=>{MapV.mode=m;$('#title').hidden=true;$('#modeHint').textContent=m==='drive'?'Fahrmodus: Wähle die Startadresse.':'Lebensmodus: Wähle ein Wohnhaus.';$('#modeHint').hidden=false;if(MapV.sel!=null&&MapV.sel>=0)MapV.select(MapV.sel,false);$('#q').focus({preventScroll:true});};
-    $('#newBtn').onclick=()=>pick('house');$('#driveBtn').onclick=()=>pick('drive');$('#modeHint').onclick=()=>{$('#title').hidden=false;};
+    $('#newBtn').onclick=()=>pick('house');$('#warBtn').onclick=()=>War.open();$('#driveBtn').onclick=()=>pick('drive');$('#modeHint').onclick=()=>{$('#title').hidden=false;};
   }).catch(e=>{$('#loadMsg').textContent='Das Gebäuderegister konnte nicht geladen werden. Bitte Seite neu laden.';console.error(e);});
 }
 start();
