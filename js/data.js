@@ -97,6 +97,8 @@ const Tiles = {
       signs: (j.signs || []).map(s => ({ kind: s[0], value: s[1], angle: s[2], x: s[3] / 10 + ox, y: s[4] / 10 + oy })),
       pois: (j.pois || []).map(p => ({ name: p.name, kind: p.kind, type: p.type, hours: p.hours, web: p.web, cuisine: p.cuisine, x: p.p[0] / 10 + ox, y: p.p[1] / 10 + oy })),
       horizon: j.horizon || null,
+      trails: (j.trails || []).map(r => ({ kind: r.kind, ref: r.ref, name: r.name, network: r.network, lines: lines(r.geom) })),
+      heritage: (j.heritage || []).map(p => ({ name: p.name, historic: p.historic, heritage: p.heritage, wiki: p.wiki, x: p.p[0] / 10 + ox, y: p.p[1] / 10 + oy })),
     };
   },
   terrain(id) {

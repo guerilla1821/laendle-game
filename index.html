@@ -138,6 +138,8 @@ canvas{display:block;touch-action:none}
 }
 @media (prefers-reduced-motion:reduce){.toast{animation:none}}
 
+.layers{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-size:13px}.layers label{display:flex;gap:6px;align-items:center;cursor:pointer}
+#clockSub{display:block;font-family:var(--ui);font-size:11.5px;font-weight:700;color:var(--red);letter-spacing:.02em}
 .wx{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
 .wx b{font-family:var(--display);font-size:16px}
 .foehn{background:#f4d9a8;color:#7a4a05;border-radius:6px;padding:1px 6px;font-weight:700}
@@ -172,6 +174,15 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
         <div class="lbl">Gebäudekategorie</div>
         <div class="legend" id="legend"></div>
       </div>
+      <div class="field">
+        <div class="lbl">Ebenen</div>
+        <div class="layers" id="layers">
+          <label><input type="checkbox" id="lyOev" checked> Bus und Bahn</label>
+          <label><input type="checkbox" id="lyWander" checked> Wanderwege</label>
+          <label><input type="checkbox" id="lyVelo" checked> Velorouten</label>
+          <label><input type="checkbox" id="lyKultur" checked> Kulturgüter</label>
+        </div>
+      </div>
       <p class="attr" id="attr"></p>
     </aside>
     <div id="title">
@@ -192,7 +203,7 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
     <div id="gtip" hidden></div>
     <div id="top" class="hud">
       <div id="addrLbl"></div>
-      <div class="clock" id="clock">Mo 07:00</div>
+      <div class="clock"><span id="clock">Mo 07:00</span><span id="clockSub"></span></div>
       <div class="wx" id="wx"></div>
       <div class="speeds" role="group" aria-label="Spielgeschwindigkeit">
         <button data-sp="0" aria-label="Pause">II</button><button data-sp="1" aria-label="Normal">▶</button><button data-sp="2" aria-label="Schnell">▶▶</button><button data-sp="3" aria-label="Sehr schnell">▶▶▶</button>
@@ -220,6 +231,7 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/astro.js"></script>
+<script src="js/calendar.js"></script>
 <script src="js/data.js"></script>
 <script src="js/game.js"></script>
 </body>

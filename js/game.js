@@ -36,6 +36,7 @@ const MapV={
     $('#tstats').innerHTML=`<div><strong>${lv(B.length)}</strong><span>Gebäude</span></div><div><strong>${DATA.gems.length}</strong><span>Gemeinden</span></div><div><strong>${lv(DATA.streets.length)}</strong><span>Strassen</span></div>`;
     this.relief=new Image();this.relief.onload=()=>{this.dirty=true;};this.relief.src='data/relief.png';this.foot=Tiles.foot;
     Tiles.listeners.push(()=>{this.dirty=true;});
+    this.layers={oev:true,wander:true,velo:true,kultur:true};[['lyOev','oev'],['lyWander','wander'],['lyVelo','velo'],['lyKultur','kultur']].forEach(([id,k])=>{const el=$('#'+id);if(el)el.onchange=()=>{this.layers[k]=el.checked;this.dirty=true;};});
     this.bindInput();addEventListener('resize',()=>this.resize());this.resize();this.fit(true);
     const loop=t=>{this.tick(t);requestAnimationFrame(loop);};requestAnimationFrame(loop);
   },
@@ -118,14 +119,17 @@ const MapV={
     const detail=s>.45&&Tiles.ok;const vt=detail?this.visibleTiles():[];
     if(detail){g.globalAlpha=.9;for(const t of vt)for(const o of t.lc){if(!this.vis(o.bb))continue;g.fillStyle=LC_MAP[o.k]||'#ddd';this.polyR(o.rings);g.fill('evenodd');}g.globalAlpha=1;}
     // Bus- und Bahnlinien
-    if(Transit.data&&s>.06){g.lineCap='round';g.lineJoin='round';for(const r of Transit.data.routes){if(!r.pieces.length)continue;g.strokeStyle=r.color||(Transit.isTrain(r)?'#39404f':'#c41f3a');g.globalAlpha=.55;g.lineWidth=Transit.isTrain(r)?3:2;for(const pc of r.pieces){this.line(pc.p);g.stroke();}}g.globalAlpha=1;
+    if(detail){g.setLineDash([6,4]);for(const t of vt)for(const r of t.trails){const hike=r.kind==='hiking'||r.kind==='foot';if(hike?!this.layers.wander:!this.layers.velo)continue;g.strokeStyle=hike?'#d9a400':'#2a7fd4';g.lineWidth=hike?2.2:2.6;for(const l of r.lines){this.line(l);g.stroke();}}g.setLineDash([]);}
+    if(Transit.data&&s>.06&&this.layers.oev){g.lineCap='round';g.lineJoin='round';for(const r of Transit.data.routes){if(!r.pieces.length)continue;g.strokeStyle=r.color||(Transit.isTrain(r)?'#39404f':'#c41f3a');g.globalAlpha=.55;g.lineWidth=Transit.isTrain(r)?3:2;for(const pc of r.pieces){this.line(pc.p);g.stroke();}}g.globalAlpha=1;
       if(s>.35){g.fillStyle='#fff';g.strokeStyle='#18223a';g.lineWidth=1.5;for(const st of Transit.data.stops){const[sx,sy]=this.w2s(st.x,st.y);if(sx<-5||sy<-5||sx>W+5||sy>H+5)continue;g.beginPath();g.arc(sx,sy,s>1.5?5:3.2,0,7);g.fill();g.stroke();}}}
     // Gebäude
     const sz=clamp(11*s,1.5,60),h=sz/2,B=DATA.b;
     for(let c=5;c>=0;c--){g.fillStyle=CAT_COL[c];const L=this.byCat[c];
       for(let k=0;k<L.length;k++){if(detail&&this.foot.has(L[k]))continue;const b=B[L[k]];const sx=(b[0]-this.cx)*s+W/2,sy=(this.cy-b[1])*s+H/2;if(sx<-h||sy<-h||sx>W+h||sy>H+h)continue;g.fillRect(sx-h,sy-h,sz,sz);}}
     if(detail){for(const t of vt)for(const o of t.bld){if(!this.vis(o.bb))continue;g.fillStyle=o.bi>=0?CAT_COL[B[o.bi][2]]:(o.catIdx>=0?CAT_COL[o.catIdx]:'#a2aab4');for(const rings of o.polys){this.polyR(rings);g.fill('evenodd');if(o.bi>=0&&o.bi===this.sel){g.strokeStyle='#c41f3a';g.lineWidth=3;g.stroke();}}}}
-    if(s>1.6&&Transit.data){g.font='700 12px "Atkinson Hyperlegible",sans-serif';g.textAlign='left';g.lineJoin='round';for(const st of Transit.data.stops){const[sx,sy]=this.w2s(st.x,st.y);if(sx<0||sy<0||sx>W||sy>H)continue;g.lineWidth=4;g.strokeStyle='rgba(255,255,255,.9)';g.strokeText(st.name,sx+8,sy+4);g.fillStyle='#18223a';g.fillText(st.name,sx+8,sy+4);}}
+    if(detail&&this.layers.kultur){g.font='700 12px "Atkinson Hyperlegible",sans-serif';g.lineJoin='round';for(const t of vt)for(const h of t.heritage){const[sx,sy]=this.w2s(h.x,h.y);if(sx<-6||sy<-6||sx>W+6||sy>H+6)continue;g.fillStyle='#c48a00';g.strokeStyle='#fff';g.lineWidth=1.5;g.beginPath();g.moveTo(sx,sy-6);g.lineTo(sx+6,sy);g.lineTo(sx,sy+6);g.lineTo(sx-6,sy);g.closePath();g.fill();g.stroke();
+      if(s>1.2&&h.name){g.lineWidth=4;g.strokeStyle='rgba(255,255,255,.9)';g.strokeText(h.name,sx+9,sy+4);g.fillStyle='#7a5600';g.fillText(h.name,sx+9,sy+4);}}}
+    if(s>1.6&&Transit.data&&this.layers.oev){g.font='700 12px "Atkinson Hyperlegible",sans-serif';g.textAlign='left';g.lineJoin='round';for(const st of Transit.data.stops){const[sx,sy]=this.w2s(st.x,st.y);if(sx<0||sy<0||sx>W||sy>H)continue;g.lineWidth=4;g.strokeStyle='rgba(255,255,255,.9)';g.strokeText(st.name,sx+8,sy+4);g.fillStyle='#18223a';g.fillText(st.name,sx+8,sy+4);}}
     // Hausnummern bei starkem Zoom
     if(s>2.2){g.fillStyle='#fff';g.font=`700 ${Math.min(13,sz*.45)}px "Atkinson Hyperlegible",sans-serif`;g.textAlign='center';g.textBaseline='middle';
       for(const b of B){const[sx,sy]=this.w2s(b[0],b[1]);if(sx<0||sy<0||sx>W||sy>H||b[5]==='NULL')continue;g.fillText(b[5],sx,sy);}g.textAlign='left';g.textBaseline='alphabetic';}
@@ -201,10 +205,12 @@ const ACTS={
   kiss:{label:'Küssen',social:true,minRel:70,steps:[{at:'target',pose:'hug',dur:3,gain:{social:6,fun:2},tgain:{social:6,fun:2},rel:2.5,bub:'♥♥'}]},
   go:{label:'Hierhin gehen',steps:[{at:'point',pose:'stand',dur:0,gain:{}}]},
   work:{label:'Zur Arbeit',auto:true,steps:[{at:'busstop',pose:'stand',dur:1,gain:{},bub:'Bus kommt',then:'leave'}]},
+  wander:{label:'Wandern gehen',steps:[{at:'mailbox',pose:'stand',dur:2,gain:{},bub:'Los gehts',then:'hike'}]},
+  velo:{label:'Velotour machen',steps:[{at:'mailbox',pose:'stand',dur:2,gain:{},bub:'Velo!',then:'bike'}]},
   vereine:{label:'Vereine in der Gemeinde',steps:[{at:'desk',pose:'sit',dur:6,gain:{fun:.1},bub:'Vereine …',then:'vereine'}]},
   club:{label:'Zum Vereinsabend',auto:true,steps:[{at:'busstop',pose:'stand',dur:1,gain:{},bub:'Training!',then:'leaveClub'}]},
 };
-const OBJ_ACTS={fridge:['snack','cook'],stove:['cook'],chair:['cook'],table:['cook'],toilet:['toilet'],shower:['shower'],sink:['wash','toilet'],bed:['sleep','nap'],sofa:['tv','sofanap'],tv:['tv'],shelf:['read'],armchair:['read'],desk:['surf','jobs','vereine'],grill:['grill'],bench:['view'],mailbox:['paper'],busstop:[]};
+const OBJ_ACTS={fridge:['snack','cook'],stove:['cook'],chair:['cook'],table:['cook'],toilet:['toilet'],shower:['shower'],sink:['wash','toilet'],bed:['sleep','nap'],sofa:['tv','sofanap'],tv:['tv'],shelf:['read'],armchair:['read'],desk:['surf','jobs','vereine'],grill:['grill'],bench:['view'],mailbox:['paper','wander','velo'],busstop:[]};
 const OBJ_NAMES={fridge:'Kühlschrank',stove:'Herd',chair:'Stuhl',table:'Esstisch',toilet:'Toilette',shower:'Dusche',sink:'Lavabo',bed:'Doppelbett',sofa:'Sofa',tv:'Fernseher',shelf:'Bücherregal',armchair:'Lesesessel',desk:'Computer',grill:'Grill',bench:'Gartenbank',mailbox:'Briefkasten',busstop:'Bushaltestelle',counter:'Küchenzeile',wardrobe:'Kleiderschrank',plant:'Pflanze',coffee:'Salontisch'};
 
 const GR={ox:-13,oz:-11,c:.5,w:52,h:44,blk:null};
@@ -289,6 +295,10 @@ const Game={
     g.setLineDash([3*k,4*k]);g.strokeStyle='rgba(255,255,255,.7)';g.lineWidth=Math.max(1,.15*k);
     for(const t of TL)for(const r of t.roads){if(!['primary','secondary','tertiary','trunk'].includes(r.hw))continue;for(const l of r.lines){g.beginPath();for(let i=0;i<l.length;i+=2){const[X,Z]=toS(l[i],l[i+1]);const px=(X+S/2)*k,py=(Z+S/2)*k;i?g.lineTo(px,py):g.moveTo(px,py);}g.stroke();}}
     g.setLineDash([]);
+    // Wander- und Velorouten
+    for(const t of TL)for(const r of t.trails){const hike=r.kind==='hiking'||r.kind==='foot';g.strokeStyle=hike?'rgba(232,180,0,.9)':'rgba(42,127,212,.85)';g.lineWidth=Math.max(1.5,(hike?.5:.7)*k);g.setLineDash(hike?[2*k,1.5*k]:[4*k,2*k]);
+      for(const l of r.lines){g.beginPath();for(let i=0;i<l.length;i+=2){const[X,Z]=toS(l[i],l[i+1]);const px=(X+S/2)*k,py=(Z+S/2)*k;i?g.lineTo(px,py):g.moveTo(px,py);}g.stroke();}}
+    g.setLineDash([]);
     g.fillStyle='#8a8580';for(const o of BLD)if(near(o.bb))for(const rings of o.polys){pathR(rings);g.fill('evenodd');}
     g.strokeStyle='rgba(255,255,255,.28)';g.lineWidth=1.2;for(const o of PARC)if(near(o.bb)){path(o.p);g.stroke();}
     const own=PARC.find(o=>o.bb[0]<=ax&&o.bb[2]>=ax&&o.bb[1]<=ay&&o.bb[3]>=ay&&inPoly(o.p,ax,ay));
@@ -354,6 +364,9 @@ const Game={
     const t=new THREE.CanvasTexture(cv),sp=new THREE.Sprite(new THREE.SpriteMaterial({map:t,depthWrite:false,transparent:true}));sp.scale.set(8,8*cv.height/512,1);return sp;},
   buildPois(W){const R=this.real;if(!R)return;const TYPES={restaurant:'Restaurant',cafe:'Café',bar:'Bar',pub:'Beiz',fast_food:'Imbiss',bakery:'Bäckerei',supermarket:'Supermarkt',convenience:'Laden',butcher:'Metzgerei',school:'Schule',kindergarten:'Kindergarten',pharmacy:'Apotheke',doctors:'Arztpraxis',dentist:'Zahnarzt',bank:'Bank',post_office:'Post',townhall:'Gemeindehaus',place_of_worship:'Kirche',library:'Bibliothek',fire_station:'Feuerwehr',police:'Polizei',sports_centre:'Sportanlage',pitch:'Sportplatz',playground:'Spielplatz',hotel:'Hotel',museum:'Museum',fuel:'Tankstelle',hairdresser:'Coiffeur',kiosk:'Kiosk',clothes:'Kleider',company:'Firma',community_centre:'Gemeinschaftszentrum'};
     const ps=[].concat(...R.TL.map(t=>t.pois)).filter(p=>p.name).map(p=>{const[X,Z]=R.toS(p.x,p.y);return{...p,X,Z,d:X*X+Z*Z};}).filter(p=>p.d<240*240).sort((a,b)=>a.d-b.d).slice(0,28);
+    const HT={castle:'Burg',ruins:'Ruine',wayside_shrine:'Bildstock',wayside_cross:'Wegkreuz',church:'Kirche',chapel:'Kapelle',monument:'Denkmal',memorial:'Gedenkstätte',archaeological_site:'Fundstelle',building:'Historisches Gebäude',boundary_stone:'Grenzstein',mine:'Bergwerk',bridge:'Historische Brücke'};
+    const hs=[].concat(...R.TL.map(t=>t.heritage)).filter(h=>h.name).map(h=>{const[X,Z]=R.toS(h.x,h.y);return{...h,X,Z,d:X*X+Z*Z};}).filter(h=>h.d<300*300).sort((a,b)=>a.d-b.d).slice(0,15);
+    for(const h of hs){const sp=this.label(h.name,'Kulturgut · '+(HT[h.historic]||h.historic||'geschützt'),'#8a6100');sp.position.set(h.X,R.yAt(h.X,h.Z)+9,h.Z);W.add(sp);}
     this.poiSprites=[];for(const p of ps){const sp=this.label(p.name,TYPES[p.type]||p.type);sp.position.set(p.X,R.yAt(p.X,p.Z)+7,p.Z);W.add(sp);this.poiSprites.push(sp);}},
   buildStops(W){const R=this.real;if(!R||!Transit.data)return;const pole=this.mat(0x8c939b);
     for(const st of Transit.data.stops){const[X,Z]=R.toS(st.x,st.y);if(X*X+Z*Z>300*300||(Math.abs(X)<14&&Math.abs(Z)<12))continue;const y=R.yAt(X,Z),g=new THREE.Group();g.position.set(X,y,Z);
@@ -372,6 +385,30 @@ const Game={
       if(m.userData.ref!==a.route.short){if(m.userData.lbl)m.remove(m.userData.lbl);const lb=this.label((train?'Zug ':'Bus ')+(a.route.short||''),'nach '+(a.trip[1]||''),a.route.color||'#c41f3a');lb.position.y=5;lb.scale.multiplyScalar(.75);m.add(lb);m.userData.lbl=lb;m.userData.ref=a.route.short;}
       used++;}
     for(let k=used;k<pool.length;k++)if(pool[k])pool[k].visible=false;},
+  nearTrail(kinds){const R=this.real;if(!R)return null;let best=null,bd=1e18;
+    for(const t of R.TL)for(const r of t.trails){if(!kinds.includes(r.kind)||!r.name)continue;for(const l of r.lines)for(let i=0;i<l.length;i+=8){const d=(l[i]-R.ax)**2+(l[i+1]-R.ay)**2;if(d<bd){bd=d;best=r.name;}}}
+    return best;},
+  tickHikes(){for(const s of this.sims){if(!(s.away&&(s.awayKind==='hike'||s.awayKind==='bike')))continue;if(this.min<s.hikeUntil)continue;
+      const hike=s.awayKind==='hike';s.away=false;s.awayKind=null;s.m.root.visible=true;s.x=-3.3;s.z=9;
+      s.needs.fun=clamp(s.needs.fun+(hike?35:40),0,100);s.needs.energy=clamp(s.needs.energy-(hike?22:18),0,100);s.needs.hygiene=clamp(s.needs.hygiene-20,0,100);s.needs.hunger=clamp(s.needs.hunger-15,0,100);
+      toast(`${s.first} ist zurück${s.hikeName?' vom '+s.hikeName:''}.`);this.renderPortraits();}},
+  tickFireworks(dt){const day=Math.floor(this.min/1440),iso=this.isoOf(day),tod=this.min%1440;
+    const on=(iso.slice(5)==='08-15'&&tod>=1320&&tod<1360)||(iso.slice(5)==='12-31'&&tod>=1430)||(iso.slice(5)==='01-01'&&tod<20);
+    const F=this.fw||(this.fw={bursts:[],t:0});
+    if(on&&!F.shown){F.shown=iso;const R=this.real;if(R&&R.toS){const[cx,cz]=R.toS(4060,10690);this.view.yaw=Math.atan2(-cx,-cz);}this.view.pitch=.2;this.view.dist=45;toast('Feuerwerk! Die Kamera schaut Richtung Schloss Vaduz.');}
+    if(!on&&F.shown&&F.shown!==iso)F.shown=null;
+    if(on&&this.speed>0){F.t-=dt;if(F.t<=0){F.t=.35+Math.random()*.6;this.spawnBurst();}}
+    for(let i=F.bursts.length-1;i>=0;i--){const b=F.bursts[i];b.age+=dt;const a=b.pts.geometry.attributes.position;
+      for(let k=0;k<b.n;k++){b.vel[k*3+1]-=9.8*dt*.35;a.array[k*3]+=b.vel[k*3]*dt;a.array[k*3+1]+=b.vel[k*3+1]*dt;a.array[k*3+2]+=b.vel[k*3+2]*dt;}
+      a.needsUpdate=true;b.pts.material.opacity=Math.max(0,1-b.age/2.4);if(b.age>2.4){this.scene.remove(b.pts);b.pts.geometry.dispose();F.bursts.splice(i,1);}}},
+  sparkTex(){if(this._spark)return this._spark;const c=document.createElement('canvas');c.width=c.height=64;const g=c.getContext('2d'),gr=g.createRadialGradient(32,32,0,32,32,32);gr.addColorStop(0,'rgba(255,255,255,1)');gr.addColorStop(.35,'rgba(255,255,255,.8)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(0,0,64,64);return this._spark=new THREE.CanvasTexture(c);},
+  spawnBurst(){const R=this.real;let dx=-.5,dz=-.8;
+    if(R&&R.toS){const[cx,cz]=R.toS(4060,10690);const d=Math.hypot(cx,cz)||1;const dist=Math.min(d,140);dx=cx/d*dist;dz=cz/d*dist;}else{dx*=300;dz*=300;}
+    const n=140,pos=new Float32Array(n*3),vel=new Float32Array(n*3),cx=dx+(Math.random()-.5)*40,cy=22+Math.random()*16,cz=dz+(Math.random()-.5)*40;
+    for(let k=0;k<n;k++){pos[k*3]=cx;pos[k*3+1]=cy;pos[k*3+2]=cz;const u=Math.random()*2-1,th=Math.random()*Math.PI*2,r=Math.sqrt(1-u*u),sp=11+Math.random()*6;vel[k*3]=r*Math.cos(th)*sp;vel[k*3+1]=u*sp;vel[k*3+2]=r*Math.sin(th)*sp;}
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+    const col=[0xff4d6d,0xffd166,0x06d6a0,0x4cc9f0,0xffffff,0xc77dff][Math.floor(Math.random()*6)];
+    const pts=new THREE.Points(g,new THREE.PointsMaterial({color:col,size:4.5,map:this.sparkTex(),alphaTest:.02,transparent:true,opacity:1,depthWrite:false,fog:false,blending:THREE.AdditiveBlending}));this.scene.add(pts);this.fw.bursts.push({pts,vel,n,age:0});},
   clubPlan(kat){const k=(kat||'').toLowerCase();if(k.includes('sport'))return{days:[1,3],start:1140,end:1230,label:'Di und Do 19:00 bis 20:30'};if(k.includes('musik')||k.includes('kultur'))return{days:[2],start:1170,end:1290,label:'Mi 19:30 bis 21:30'};
     if(k.includes('feuerwehr')||k.includes('rettung'))return{days:[0],start:1170,end:1290,label:'Mo 19:30 bis 21:30'};return{days:[4],start:1140,end:1260,label:'Fr 19:00 bis 21:00'};},
   tickClubs(day,dow,tod){for(const s of this.sims){if(!s.verein)continue;const pl=this.clubPlan(s.verein.kategorie);s.clubDone=s.clubDone||{};
@@ -534,6 +571,8 @@ const Game={
   finishStep(s){const c=s.cur,st=c.def.steps[c.step];
     if(st.then==='jobs'&&s.id===this.sel)this.openJobs(s);
     if(st.then==='vereine'&&s.id===this.sel)this.openVereine(s);
+    if(st.then==='hike'||st.then==='bike'){const tr=this.nearTrail(st.then==='hike'?['hiking','foot']:['bicycle','mtb']);s.away=true;s.awayKind=st.then;s.hikeUntil=this.min+(st.then==='hike'?150:120);s.hikeName=tr;s.m.root.visible=false;
+      toast(tr?`${s.first} ${st.then==='hike'?'wandert auf dem':'fährt die'} ${tr}.`:`${s.first} ${st.then==='hike'?'geht spazieren':'macht eine Velotour'}.`);if(c.seat)c.seat.by=null;s.queue=[];s.cur=null;this.renderQueue();this.renderPortraits();return;}
     if(st.then==='leaveClub'){s.away=true;s.awayKind='club';s.m.root.visible=false;toast(`${s.first} geht zum ${s.verein?s.verein.name:'Verein'}.`);if(c.seat)c.seat.by=null;s.queue=[];s.cur=null;this.renderQueue();this.renderPortraits();return;}
     if(st.then==='leave'){s.away=true;s.awayKind='work';s.earned=true;s.m.root.visible=false;toast(`${s.first} fährt mit dem Bus zur Arbeit.`);if(c.seat)c.seat.by=null;s.queue=[];s.cur=null;this.renderQueue();this.renderPortraits();return;}
     c.step++;if(c.step>=c.def.steps.length){if(c.seat)c.seat.by=null;this.standUp(s);s.queue.shift();this.next(s);}else this.beginStep(s);},
@@ -551,17 +590,21 @@ const Game={
   frame(dt){const gm=dt*[0,1,3,8][this.speed];
     if(gm>0)this.tickTime(gm);
     for(const s of this.sims)this.tickSim(s,gm,dt);
-    this.updateCamera();this.updateLight();this.tickTransit();this.tickPrecip(dt);this.R.render(this.scene,this.cam);this.updateBubbles();
+    this.updateCamera();this.updateLight();this.tickTransit();this.tickPrecip(dt);this.tickFireworks(dt);this.R.render(this.scene,this.cam);this.updateBubbles();
     this.uiT=(this.uiT||0)+dt;if(this.uiT>.25){this.uiT=0;this.renderPanel();this.renderClock();}},
   isoOf(day){const[y,m,d]=(this.startDay||Astro.todayVaduz()).split('-').map(Number);return new Date(Date.UTC(y,m-1,d)+day*864e5).toISOString().slice(0,10);},
   dowOf(day){return(new Date(this.isoOf(day)+'T12:00:00Z').getUTCDay()+6)%7;},
   tickTime(gm){const prevDay=Math.floor(this.min/1440);this.min+=gm;const day=Math.floor(this.min/1440),tod=this.min%1440,dow=this.dowOf(day);
     if(dow===0&&tod>=540&&this.lastBill<day+1&&day>0){this.lastBill=day+1;this.money-=520;toast('Wochenrechnungen bezahlt: CHF 520 (Krankenkasse, Strom, Lebensmittel).');}
-    for(const s of this.sims){if(!s.job)continue;const j=JOBS.find(x=>x.id===s.job);const work=dow<5;
+    const hol=Cal.holidayOn(this.isoOf(day));
+    for(const s of this.sims){if(!s.job)continue;const j=JOBS.find(x=>x.id===s.job);const work=dow<5&&!(hol&&(hol.frei||j.id==='bank'));
       if(!s.away&&work&&tod>=j.start-45&&tod<j.end-60&&!(s.cur&&s.cur.id==='work')){if(s.flags.out)continue;if(s.cur&&s.cur.seat)s.cur.seat.by=null;this.standUp(s);s.cur=null;s.queue=[];this.enqueue(s,'work');}
-      if(s.away&&s.awayKind!=='club'&&(!work||tod>=j.end+30||tod<j.start-60)){s.away=false;s.m.root.visible=true;s.x=9.5;s.z=9.8;if(s.earned){this.money+=j.pay;s.earned=false;toast(`${s.first} ist zurück von der Arbeit. Lohn: ${chf(j.pay)}.`);}this.renderPortraits();}}
+      if(s.away&&s.awayKind==='work'&&(!work||tod>=j.end+30||tod<j.start-60)){s.away=false;s.m.root.visible=true;s.x=9.5;s.z=9.8;if(s.earned){this.money+=j.pay;s.earned=false;toast(`${s.first} ist zurück von der Arbeit. Lohn: ${chf(j.pay)}.`);}this.renderPortraits();}}
     this.tickClubs(day,dow,tod);
-    if(day!==prevDay){const[,mm,dd]=this.isoOf(day).split('-');toast(`${['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'][dow]}, ${+dd}.${+mm}.`);}},
+    this.tickHikes();
+    if(day!==prevDay){const iso=this.isoOf(day),[,mm,dd]=iso.split('-'),h=Cal.holidayOn(iso),f=Cal.ferienOn(iso),fp=Cal.ferienOn(this.isoOf(day-1));
+      toast(`${['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'][dow]}, ${+dd}.${+mm}.${h?' · '+h.name+(h.frei?', arbeitsfrei':''):''}${f&&f!==fp?' · Beginn '+f:''}`);
+      if(h&&h.name==='Staatsfeiertag')setTimeout(()=>toast('Heute Abend um 22 Uhr: Feuerwerk über dem Schloss Vaduz.'),1500);}},
   tickSim(s,gm,dt){const m=s.m,c=s.cur,st=c?c.def.steps[c.step]:null;
     // Bedürfnisse
     if(gm>0){const mode=s.away?'away':(st&&st.sleep&&c.phase==='do'||s.flags.out)?'sleep':'awake';const D=DECAY[mode];for(const[k] of NEEDS)s.needs[k]=clamp(s.needs[k]-D[k]/60*gm,0,100);
@@ -609,7 +652,7 @@ const Game={
     this.sun.position.set(this.view.tx+vx*90,vy*90,this.view.tz+vz*90);this.sun.target.position.set(this.view.tx,0,this.view.tz);
     const moonLight=useMoon?.16*(this.illum?this.illum.fraction:.5)*(1-.8*cloud):0;
     this.sun.intensity=useMoon?moonLight:direct*(1-.78*cloud)*.78;this.sun.color.set(useMoon?0xaabbe0:(sun.alt<8?0xffc89a:0xfff3dd));this.sun.castShadow=this.sun.intensity>.05;
-    this.hemi.intensity=.07+dayF*(.42-.14*cloud)+moonLight*.4;
+    this.hemi.intensity=.13+dayF*(.36-.14*cloud)+moonLight*.5;
     const night=new THREE.Color(0x0c1426),clear=new THREE.Color(0xa7cbe6),grey=new THREE.Color(0xaeb6bf),dusk=new THREE.Color(0xe9a37a);
     const sky=night.clone().lerp(clear.clone().lerp(grey,clamp(cloud*1.1,0,1)),dayF);
     if(sun.alt>-6&&sun.alt<9)sky.lerp(dusk,.32*(1-cloud)*(1-Math.abs(sun.alt-1)/9));
@@ -631,7 +674,7 @@ const Game={
     const Q=this.precip;Q.pts.visible=true;Q.pts.position.set(this.view.tx,0,this.view.tz);Q.pts.geometry.setDrawRange(0,Math.floor(Q.n*clamp(wx.precip/3,.15,1)));},
   tickPrecip(dt){const Q=this.precip;if(!Q||!Q.pts.visible)return;const a=Q.pts.geometry.attributes.position,v=Q.kind==='snow'?1.4:16,mult=Math.max(.3,[0,1,1.6,2.2][this.speed]||.3);
     for(let i=0;i<a.count;i++){let y=a.array[i*3+1]-v*dt*mult;if(y<0)y+=45;a.array[i*3+1]=y;if(Q.kind==='snow')a.array[i*3]+=Math.sin(y+i)*.01;}a.needsUpdate=true;},
-  updateCamera(){const v=this.view;v.pitch=clamp(v.pitch,.35,1.35);v.dist=clamp(v.dist,7,90);v.tx=clamp(v.tx,-80,80);v.tz=clamp(v.tz,-80,80);
+  updateCamera(){const v=this.view;v.pitch=clamp(v.pitch,.18,1.35);v.dist=clamp(v.dist,7,90);v.tx=clamp(v.tx,-80,80);v.tz=clamp(v.tz,-80,80);
     this.cam.position.set(v.tx+Math.sin(v.yaw)*Math.cos(v.pitch)*v.dist,Math.sin(v.pitch)*v.dist,v.tz+Math.cos(v.yaw)*Math.cos(v.pitch)*v.dist);this.cam.lookAt(v.tx,.8,v.tz);},
   bindInput(){const c=$('#gc'),pts=new Map();let moved=0,btn=0,pinch=null;const ray=new THREE.Raycaster(),nd=new THREE.Vector2();
     const cast=(e,list)=>{nd.set(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1);ray.setFromCamera(nd,this.cam);return ray.intersectObjects(list,true);};
@@ -669,7 +712,8 @@ const Game={
     const o=this.sims.find(x=>x!==s);if(o){const r=this.rel;$('#rel').innerHTML=`<span>Beziehung zu ${esc(o.first)}: <b>${Math.round(r)}</b></span><div class="need"><div class="bar"><i style="width:${(r+100)/2}%;background:${r>=0?'var(--blue)':'var(--bad)'}"></i></div></div>`;}
     const pp=$('#portraits').querySelectorAll('.portrait');this.sims.forEach((x,k)=>{if(pp[k]){const md=this.mood(x);pp[k].style.borderColor=md>60?'var(--good)':md>35?'var(--warn)':'var(--bad)';}});
     $('#money').textContent=chf(this.money);$('#money').style.color=this.money<0?'var(--bad)':'var(--good)';},
-  renderClock(){const day=Math.floor(this.min/1440);const[,mm,dd]=this.isoOf(day).split('-');$('#clock').textContent=`${DAYS[this.dowOf(day)]} ${+dd}.${+mm}. ${hhmm(this.min)}`;},
+  renderClock(){const day=Math.floor(this.min/1440),iso=this.isoOf(day);const[,mm,dd]=iso.split('-');$('#clock').textContent=`${DAYS[this.dowOf(day)]} ${+dd}.${+mm}. ${hhmm(this.min)}`;
+    if(this.calKey!==iso){this.calKey=iso;const h=Cal.holidayOn(iso),f=Cal.ferienOn(iso);$('#clockSub').textContent=[h?h.name+(h.frei?'':' (Bankfeiertag)'):null,f].filter(Boolean).join(' · ');}},
   renderQueue(){const s=this.sims[this.sel];const q=$('#queue');if(!s){q.innerHTML='';return;}
     q.innerHTML=s.queue.map((a,k)=>`<div class="qi"><span>${esc(a.def.label)}${a.target!=null&&this.sims[a.target]?' mit '+esc(this.sims[a.target].first):''}</span>${a.def.auto&&k===0?'':`<button data-k="${k}" aria-label="Abbrechen">×</button>`}</div>`).join('');
     q.querySelectorAll('button').forEach(b=>b.onclick=()=>this.cancel(s,+b.dataset.k));},
