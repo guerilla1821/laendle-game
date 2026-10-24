@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Lebenssimulation auf den echten Geodaten Liechtensteins">
+<title>Ländle Leben</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: Vollbild-Spiel. Karte und 3D-Grundstück als Leinwand, Bedienelemente schweben als Glas-Paneele darüber.
+   Eine Welt, ein Look (alpines Tageslicht), daher bewusst nur ein Farbschema. */
+:root{
+  --ink:#18223a; --muted:#5a6680; --paper:#eef2f5; --panel:rgba(250,252,253,.94); --line:#d4dce4;
+  --blue:#1d3d8f; --red:#c41f3a; --gold:#d8a221; --good:#3a9c55; --warn:#de9d24; --bad:#cf4237;
+  --display:"Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --ui:"Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;background:var(--paper);color:var(--ink);font-family:var(--ui);overflow:hidden;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+#app{position:fixed;inset:0}
+.screen{position:absolute;inset:0}
+canvas{display:block;touch-action:none}
+#mapc,#gc{position:absolute;inset:0;width:100%;height:100%}
+
+/* ---------- Karte ---------- */
+#panel{position:absolute;top:calc(env(safe-area-inset-top,0px) + 16px);right:max(16px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 16px);width:340px;display:flex;flex-direction:column;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 10px 40px rgba(24,34,58,.12);overflow:auto;backdrop-filter:blur(8px)}
+.brand{font-family:var(--display);font-weight:800;font-size:26px;letter-spacing:-.02em;line-height:1}
+.brand b{color:var(--red);font-weight:800}
+.flag{display:inline-block;width:18px;height:12px;background:linear-gradient(var(--blue) 50%,var(--red) 50%);border-radius:2px;margin-right:8px;vertical-align:2px}
+.sub{color:var(--muted);font-size:14px;line-height:1.45;margin-top:6px}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700}
+#q{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:9px;padding:10px 12px;font:inherit;font-size:15px;background:#fff;color:var(--ink)}
+.field{display:flex;flex-direction:column;gap:6px}
+#results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+#results li button{width:100%;text-align:left;border:0;background:transparent;padding:7px 8px;border-radius:7px;display:flex;justify-content:space-between;gap:8px;font-size:14px}
+#results li button:hover{background:#e3e9f1}
+#results small{color:var(--muted);white-space:nowrap}
+.card{border:1px solid var(--line);border-radius:11px;padding:14px;background:#fff;display:flex;flex-direction:column;gap:8px}
+.card h3{margin:0;font-family:var(--display);font-size:20px;letter-spacing:-.01em;text-wrap:balance}
+.meta{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px}
+.meta dt{color:var(--muted)} .meta dd{margin:0;font-variant-numeric:tabular-nums}
+.btn{border:0;border-radius:9px;padding:11px 14px;font-weight:700;background:var(--blue);color:#fff;font-size:15px}
+.btn:hover{filter:brightness(1.1)} .btn:disabled{background:#b9c2cf;cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--blue);border:1px solid var(--line)}
+.btn.red{background:var(--red)}
+.hint{font-size:12.5px;color:var(--muted);line-height:1.4}
+.legend{display:flex;flex-direction:column;gap:5px;font-size:13px}
+.legend div{display:flex;align-items:center;gap:8px}
+.legend i{width:10px;height:10px;border-radius:2px;flex:none}
+.legend span{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
+.attr{font-size:11.5px;color:var(--muted);line-height:1.4;margin:auto 0 0}
+#coord{position:absolute;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 14px);font-size:12px;color:var(--muted);background:var(--panel);padding:5px 9px;border-radius:7px;font-variant-numeric:tabular-nums;border:1px solid var(--line)}
+#mapTip{position:absolute;pointer-events:none;background:var(--ink);color:#fff;font-size:12.5px;padding:5px 8px;border-radius:6px;white-space:nowrap;transform:translate(12px,-50%)}
+.zoomBtns{position:absolute;left:max(16px,env(safe-area-inset-left,0px));top:calc(env(safe-area-inset-top,0px) + 16px);display:flex;flex-direction:column;gap:6px}
+.zoomBtns button{width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--panel);font-size:18px;font-weight:700}
+
+/* Titel */
+#title{position:absolute;inset:0;display:grid;place-items:center;background:rgba(238,242,245,.55);backdrop-filter:blur(2px);padding:16px}
+.tcard{max-width:460px;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:28px;box-shadow:0 20px 60px rgba(24,34,58,.18);display:flex;flex-direction:column;gap:14px;box-sizing:border-box}
+.tcard h1{font-family:var(--display);font-weight:800;font-size:clamp(38px,9vw,56px);letter-spacing:-.035em;line-height:.95;margin:0}
+.tcard h1 b{color:var(--red)}
+.tcard p{margin:0;line-height:1.5;color:var(--muted)}
+.tstats{display:flex;gap:18px;flex-wrap:wrap}
+.tstats div{display:flex;flex-direction:column}
+.tstats strong{font-family:var(--display);font-size:24px;font-variant-numeric:tabular-nums}
+.tstats span{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.trow{display:flex;gap:10px;flex-wrap:wrap}
+
+/* ---------- Spiel-HUD ---------- */
+.hud{position:absolute;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(24,34,58,.14);backdrop-filter:blur(8px)}
+#top{top:calc(env(safe-area-inset-top,0px) + 12px);left:16px;right:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px}
+#addrLbl{font-weight:700;font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 180px}
+#addrLbl small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.clock{font-family:var(--display);font-weight:700;font-size:20px;font-variant-numeric:tabular-nums;min-width:118px}
+.speeds{display:flex;gap:3px}
+.speeds button,.tbtn{border:1px solid var(--line);background:#fff;border-radius:7px;height:32px;min-width:34px;padding:0 9px;font-size:13px;font-weight:700}
+.speeds button[aria-pressed="true"]{background:var(--blue);color:#fff;border-color:var(--blue)}
+#money{font-weight:700;font-variant-numeric:tabular-nums;color:var(--good);font-size:15px}
+#fam{left:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);width:330px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.portraits{display:flex;gap:8px;align-items:center}
+.portrait{width:44px;height:44px;border-radius:50%;border:3px solid var(--good);display:grid;place-items:center;font-weight:800;color:#fff;font-family:var(--display);font-size:18px;position:relative;padding:0}
+.portrait[aria-pressed="true"]{outline:3px solid var(--ink);outline-offset:2px}
+.portrait .away{position:absolute;bottom:-4px;right:-6px;background:var(--ink);color:#fff;font-size:9px;padding:1px 4px;border-radius:5px;font-family:var(--ui)}
+#simName{font-family:var(--display);font-weight:700;font-size:18px;line-height:1.1}
+#simJob{font-size:12.5px;color:var(--muted)}
+.needs{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}
+.need{display:flex;flex-direction:column;gap:3px;font-size:12px}
+.need .bar{height:7px;border-radius:4px;background:#e1e6ec;overflow:hidden}
+.need .bar i{display:block;height:100%;border-radius:4px;transition:width .3s}
+.rel{font-size:12px;display:flex;flex-direction:column;gap:3px}
+#queue{left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;gap:6px;padding:6px;max-width:calc(100% - 32px)}
+#queue:empty{display:none}
+.qi{display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 6px 5px 10px;font-size:12.5px;white-space:nowrap}
+.qi:first-child{border-color:var(--blue);background:#e8eefb}
+.qi button{border:0;background:transparent;width:22px;height:22px;border-radius:5px;font-weight:700;color:var(--muted)}
+.qi button:hover{background:#dde3ec;color:var(--red)}
+#ctx{position:absolute;min-width:190px;padding:6px;display:flex;flex-direction:column;gap:2px;z-index:5}
+#ctx .ch{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:4px 8px 6px;font-weight:700}
+#ctx button{border:0;background:transparent;text-align:left;padding:8px 10px;border-radius:7px;font-size:14px}
+#ctx button:hover:not(:disabled){background:#e3e9f1}
+#ctx button:disabled{color:#a6afbc;cursor:default}
+#bubbles{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.bub{position:absolute;transform:translate(-50%,-100%);background:#fff;border:1px solid var(--line);border-radius:10px;padding:3px 8px;font-size:12px;font-weight:700;white-space:nowrap;box-shadow:0 3px 10px rgba(0,0,0,.12)}
+.bub.alert{background:var(--red);color:#fff;border-color:var(--red)}
+.bub:empty{display:none}
+#gtip{position:absolute;pointer-events:none;background:var(--ink);color:#fff;font-size:12.5px;padding:5px 8px;border-radius:6px;white-space:nowrap;transform:translate(14px,-50%)}
+#toasts{position:absolute;top:calc(env(safe-area-inset-top,0px) + 74px);left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;z-index:8;width:min(440px,calc(100% - 32px))}
+.toast{background:var(--ink);color:#fff;padding:8px 13px;border-radius:9px;font-size:13.5px;box-shadow:0 6px 20px rgba(0,0,0,.2);animation:tin .25s ease-out;text-align:center}
+@keyframes tin{from{opacity:0;transform:translateY(-6px)}}
+#modal{position:absolute;inset:0;background:rgba(24,34,58,.35);display:grid;place-items:center;z-index:10;padding:16px}
+.mcard{background:#fff;border-radius:16px;padding:22px;width:min(520px,100%);box-sizing:border-box;display:flex;flex-direction:column;gap:14px;max-height:calc(100% - 32px);overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.25)}
+.mcard h2{margin:0;font-family:var(--display);font-size:24px;letter-spacing:-.02em}
+.mcard input[type=text]{border:1px solid var(--line);border-radius:8px;padding:9px 11px;font:inherit;font-size:15px;width:100%;box-sizing:border-box}
+.prow{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.person{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.sw{display:flex;gap:6px;flex-wrap:wrap}
+.sw button{width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);padding:0}
+.sw button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--ink)}
+.jobs{display:flex;flex-direction:column;gap:8px}
+.job{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;text-align:left;background:#fff}
+.job:hover{border-color:var(--blue)}
+.job b{display:block} .job small{color:var(--muted)}
+.job .pay{font-weight:700;color:var(--good);white-space:nowrap;font-variant-numeric:tabular-nums}
+#gAttr{position:absolute;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 6px);font-size:10.5px;color:rgba(24,34,58,.7);text-shadow:0 0 3px #fff;max-width:60%;text-align:right}
+
+@media (max-width:760px){
+  #panel{top:auto;left:max(16px,env(safe-area-inset-left,0px));width:auto;max-height:46%;padding:14px;gap:10px}
+  #fam{width:auto;right:16px;padding:10px;gap:8px}
+  .needs{grid-template-columns:1fr 1fr 1fr;gap:4px 10px}
+  #queue{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 158px)}
+  .prow{grid-template-columns:1fr}
+  .clock{font-size:17px;min-width:100px}
+  #gAttr{display:none}
+}
+@media (prefers-reduced-motion:reduce){.toast{animation:none}}
+
+.wx{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+.wx b{font-family:var(--display);font-size:16px}
+.foehn{background:#f4d9a8;color:#7a4a05;border-radius:6px;padding:1px 6px;font-weight:700}
+details.vereine{font-size:13px}details.vereine summary{cursor:pointer;color:var(--blue);font-weight:700}
+details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:auto}details.vereine small{color:var(--muted)}
+#loadOverlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(238,242,245,.7);z-index:20;font-family:var(--display);font-size:20px;font-weight:700}
+@media (max-width:760px){.wx{max-width:100%;order:9;flex-basis:100%}}
+</style>
+</head>
+<body>
+
+
+<div id="app">
+  <section id="mapScreen" class="screen">
+    <canvas id="mapc" aria-label="Karte aller Gebäude in Liechtenstein"></canvas>
+    <div class="zoomBtns"><button id="zin" aria-label="Hineinzoomen">+</button><button id="zout" aria-label="Herauszoomen">−</button><button id="zfit" aria-label="Ganzes Land zeigen" style="font-size:13px">FL</button></div>
+    <div id="coord">LV95</div>
+    <div id="mapTip" hidden></div>
+    <aside id="panel">
+      <div>
+        <div class="brand"><span class="flag"></span>Ländle <b>Leben</b></div>
+        <div class="sub">Wähle eine echte Wohnadresse in Liechtenstein und zieh mit deiner Familie ein.</div>
+      </div>
+      <div class="field">
+        <label for="q" class="lbl">Adresse suchen</label>
+        <input id="q" type="search" placeholder="z. B. Landstrasse 12 Triesen" autocomplete="off">
+        <ul id="results"></ul>
+      </div>
+      <div id="selCard" class="card" hidden></div>
+      <button id="randBtn" class="btn ghost">Zufällige Wohnadresse</button>
+      <div class="field">
+        <div class="lbl">Gebäudekategorie</div>
+        <div class="legend" id="legend"></div>
+      </div>
+      <p class="attr" id="attr"></p>
+    </aside>
+    <div id="title">
+      <div class="tcard">
+        <div class="lbl"><span class="flag"></span>Prototyp 0.2</div>
+        <h1>Ländle <b>Leben</b></h1>
+        <p>Eine Lebenssimulation auf den echten Gebäuden Liechtensteins. Echtes Gelände, echte Grundrisse, Busse nach Fahrplan, Live-Wetter mit Föhn und der Sonnenstand über den echten Bergen. Such dir eine Adresse aus und gründe eine Familie.</p>
+        <div class="tstats" id="tstats"></div>
+        <div class="trow"><button id="newBtn" class="btn red">Neues Spiel</button><button id="contBtn" class="btn ghost" hidden>Weiterspielen</button></div>
+        <p class="hint" id="loadMsg">Lade Gebäuderegister …</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="gameScreen" class="screen" hidden>
+    <canvas id="gc"></canvas>
+    <div id="bubbles"></div>
+    <div id="gtip" hidden></div>
+    <div id="top" class="hud">
+      <div id="addrLbl"></div>
+      <div class="clock" id="clock">Mo 07:00</div>
+      <div class="wx" id="wx"></div>
+      <div class="speeds" role="group" aria-label="Spielgeschwindigkeit">
+        <button data-sp="0" aria-label="Pause">II</button><button data-sp="1" aria-label="Normal">▶</button><button data-sp="2" aria-label="Schnell">▶▶</button><button data-sp="3" aria-label="Sehr schnell">▶▶▶</button>
+      </div>
+      <div id="money">CHF 0</div>
+      <button class="tbtn" id="wallBtn">Wände: unten</button>
+      <button class="tbtn" id="mapBtn">Karte</button>
+    </div>
+    <div id="fam" class="hud">
+      <div class="portraits" id="portraits"></div>
+      <div><div id="simName"></div><div id="simJob"></div></div>
+      <div class="needs" id="needs"></div>
+      <div class="rel" id="rel"></div>
+    </div>
+    <div id="queue" class="hud"></div>
+    <div id="ctx" class="hud" hidden></div>
+    <div id="gAttr"></div>
+  </section>
+
+  <div id="modal" hidden></div>
+  <div id="loadOverlay" hidden>Lade die Umgebung …</div>
+  <div id="toasts" aria-live="polite"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/astro.js"></script>
+<script src="js/data.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
