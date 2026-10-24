@@ -40,7 +40,7 @@ const Drive = {
     document.querySelectorAll('#dTouch .stick').forEach(el => {
       const axis = el.dataset.axis, knob = el.querySelector('.knob'); let id = null;
       const set = e => {
-        const r = el.getBoundingClientRect(), R = r.width / 2 - 31;
+        const r = el.getBoundingClientRect(), R = r.width / 2 - knob.offsetWidth / 2 - 3;
         let v = axis === 'x' ? (e.clientX - r.left - r.width / 2) / R : -(e.clientY - r.top - r.height / 2) / R;
         v = clamp(v, -1, 1); const dz = .12, out = Math.abs(v) < dz ? 0 : Math.sign(v) * (Math.abs(v) - dz) / (1 - dz);
         this.touch[axis] = out; knob.style.transform = axis === 'x' ? `translateX(${v * R}px)` : `translateY(${-v * R}px)`;

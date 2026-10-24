@@ -172,12 +172,12 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
 @media (pointer:coarse){
   #dKeys{display:none}
   #dTouch{display:block;position:absolute;inset:auto 0 0 0;height:0;pointer-events:none}
-  #dTouch .stick{position:absolute;bottom:22px;width:132px;height:132px;border-radius:50%;background:rgba(24,34,58,.45);border:2px solid rgba(255,255,255,.55);pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none}
-  #dTouch .stick[data-axis="x"]{left:18px}#dTouch .stick[data-axis="y"]{right:18px}
+  #dTouch .stick{position:absolute;bottom:20px;width:106px;height:106px;border-radius:50%;background:rgba(24,34,58,.45);border:2px solid rgba(255,255,255,.55);pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none}
+  #dTouch .stick[data-axis="y"]{left:16px}#dTouch .stick[data-axis="x"]{right:16px}
   #dTouch .stick.on{background:rgba(196,31,58,.35)}
   #dTouch .ar{position:absolute;font-style:normal;font-size:14px;line-height:18px;color:rgba(255,255,255,.6)}
-  #dTouch .knob{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:rgba(255,255,255,.88);box-shadow:0 4px 14px rgba(0,0,0,.35);will-change:transform}
-  #dGauge{bottom:172px}#dMap{bottom:172px;width:110px;height:110px}
+  #dTouch .knob{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:rgba(255,255,255,.88);box-shadow:0 4px 14px rgba(0,0,0,.35);will-change:transform}
+  #dGauge{bottom:140px;padding:5px 10px;gap:7px;border-radius:11px}#dGauge #dSpeed{font-size:24px}#dLimit{width:30px;height:30px;border-width:3.5px;font-size:11px}#dMap{bottom:140px;width:92px;height:92px}
   #dTop .tbtn#dTime{display:none}
 }
 
@@ -212,7 +212,7 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
   #wFeed{top:auto;bottom:118px;left:8px;max-width:52%}#wFeed div{font-size:11px;padding:4px 7px}#wFeed div:nth-child(n+3){display:none}
   #wBottom{left:8px;right:8px;transform:none;width:auto;flex-direction:column;align-items:stretch;gap:6px;bottom:8px}
   #wBuild button{flex:1}
-  #wTut{top:auto;bottom:160px;transform:translateX(-50%)}
+  #warScreen #wTut{top:auto;bottom:160px;transform:translateX(-50%);max-height:calc(100% - 240px);overflow:auto}
   #wBoard{max-height:45%}
   #wBoard.open{top:62px;bottom:auto;max-height:calc(100% - 200px);z-index:4}
 }
@@ -332,8 +332,8 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
     <div id="dGauge"><div id="dLimit" title="Höchstgeschwindigkeit">–</div><div><span id="dSpeed">0</span><small>km/h</small></div></div>
     <div id="dKeys">W A S D oder Pfeile · Leertaste Handbremse · C Kamera · R Strasse · T Zeit · Esc Karte</div>
     <div id="dTouch">
-      <div class="stick" data-axis="x" aria-label="Lenken"><i class="ar" style="left:10px;top:50%;margin-top:-9px">◀</i><i class="ar" style="right:10px;top:50%;margin-top:-9px">▶</i><div class="knob"></div></div>
       <div class="stick" data-axis="y" aria-label="Gas und Bremse"><i class="ar" style="top:8px;left:50%;margin-left:-7px">▲</i><i class="ar" style="bottom:8px;left:50%;margin-left:-7px">▼</i><div class="knob"></div></div>
+      <div class="stick" data-axis="x" aria-label="Lenken"><i class="ar" style="left:10px;top:50%;margin-top:-9px">◀</i><i class="ar" style="right:10px;top:50%;margin-top:-9px">▶</i><div class="knob"></div></div>
     </div>
   </section>
 
@@ -371,12 +371,12 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="js/config.js"></script>
-<script src="js/astro.js"></script>
-<script src="js/calendar.js"></script>
-<script src="js/data.js"></script>
-<script src="js/game.js"></script>
-<script src="js/drive.js"></script>
-<script src="js/war.js"></script>
+<script src="js/config.js?v=dev"></script>
+<script src="js/astro.js?v=dev"></script>
+<script src="js/calendar.js?v=dev"></script>
+<script src="js/data.js?v=dev"></script>
+<script src="js/game.js?v=dev"></script>
+<script src="js/drive.js?v=dev"></script>
+<script src="js/war.js?v=dev"></script>
 </body>
 </html>

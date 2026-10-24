@@ -344,7 +344,7 @@ const War = {
     if (!this.me) return; const me = this.me, M = this.map, max = this.maxTroops(me), full = me.troops >= max * .97;
     $('#wName').textContent = me.name; $('#wName').style.color = me.color;
     $('#wTroops').textContent = `${fmtK(me.troops)} / ${fmtK(max)}`;
-    $('#wGrow').textContent = full ? 'Maximum' : `+${fmtK(me.growth || 0)}/s`; $('#wGrow').classList.toggle('full', full);
+    const gr = (max * .006 + me.troops * .06) * Math.max(0, 1 - me.troops / max); $('#wGrow').textContent = full ? 'Maximum' : `+${fmtK(gr)}/s`; $('#wGrow').classList.toggle('full', full);
     if (full && me.alive && this.t - this.maxWarned > 90) { this.maxWarned = this.t; this.log('Truppen am Maximum: Es wachsen keine neuen nach. Greif an, erobere Land oder baue Siedlungen.', 'warn'); }
     $('#wGold').textContent = fmtK(me.gold); $('#wGoldR').textContent = `+${(me.goldRate || 0).toFixed(1)}/s`;
     $('#wLand').textContent = (me.cells / M.land * 100).toFixed(1) + ' %';
