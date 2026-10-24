@@ -12,7 +12,7 @@ const HW_WIDTH = { motorway: 4.5, trunk: 4, primary: 3.6, secondary: 3.4, tertia
 
 const Drive = {
   inited: false, active: false, chunks: new Map(), nodes: new Map(), segGrid: new Map(), lights: [], ai: [], busPool: [],
-  car: { x: 0, y: 0, hd: 0, v: 0, steer: 0, z: 0 }, keys: {}, touch: { l: 0, r: 0, g: 0, b: 0, hb: 0 }, camMode: 0, timeOffset: 0, edgeSeq: 0,
+  car: { x: 0, y: 0, hd: 0, v: 0, steer: 0, z: 0 }, keys: {}, touch: { x: 0, y: 0 }, camMode: 0, timeOffset: 0, edgeSeq: 0,
 
   /* ---------- Einrichtung ---------- */
   init() {
@@ -36,9 +36,19 @@ const Drive = {
       this.keys[e.code] = true; if (e.code === 'KeyC') this.camMode = (this.camMode + 1) % 3; if (e.code === 'KeyR') this.resetToRoad(); if (e.code === 'KeyT') this.shiftTime(1); if (e.code === 'Escape') this.exit(); });
     addEventListener('keyup', e => { this.keys[e.code] = false; });
     addEventListener('blur', () => { this.keys = {}; });
-    document.querySelectorAll('#dTouch [data-k]').forEach(b => {
-      const k = b.dataset.k, on = e => { e.preventDefault(); this.touch[k] = 1; b.classList.add('on'); }, off = e => { e.preventDefault(); this.touch[k] = 0; b.classList.remove('on'); };
-      b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off);
+    // zwei Daumen-Joysticks: links lenken (waagrecht), rechts Gas und Bremse (senkrecht)
+    document.querySelectorAll('#dTouch .stick').forEach(el => {
+      const axis = el.dataset.axis, knob = el.querySelector('.knob'); let id = null;
+      const set = e => {
+        const r = el.getBoundingClientRect(), R = r.width / 2 - 31;
+        let v = axis === 'x' ? (e.clientX - r.left - r.width / 2) / R : -(e.clientY - r.top - r.height / 2) / R;
+        v = clamp(v, -1, 1); const dz = .12, out = Math.abs(v) < dz ? 0 : Math.sign(v) * (Math.abs(v) - dz) / (1 - dz);
+        this.touch[axis] = out; knob.style.transform = axis === 'x' ? `translateX(${v * R}px)` : `translateY(${-v * R}px)`;
+      };
+      const end = e => { if (e.pointerId !== id) return; id = null; this.touch[axis] = 0; knob.style.transform = ''; el.classList.remove('on'); };
+      el.addEventListener('pointerdown', e => { e.preventDefault(); id = e.pointerId; el.setPointerCapture(id); el.classList.add('on'); set(e); });
+      el.addEventListener('pointermove', e => { if (e.pointerId === id) { e.preventDefault(); set(e); } });
+      el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('lostpointercapture', end);
     });
     $('#dExit').onclick = () => this.exit(); $('#dCam').onclick = () => { this.camMode = (this.camMode + 1) % 3; };
     $('#dReset').onclick = () => this.resetToRoad(); $('#dTime').onclick = () => this.shiftTime(1);
@@ -276,7 +286,7 @@ const Drive = {
     const ow = r.oneway === 'yes' || r.oneway === 'true' || r.oneway === '1' ? 1 : r.oneway === '-1' ? -1 : 0;
     const ms = parseFloat(r.maxspeed);
     const e = { id: ++this.edgeSeq, p: l, cum, len: cum[cum.length - 1], name: r.name, hw: r.hw, limit: isNaN(ms) ? (HW_SPEED[r.hw] || 50) : ms, oneway: ow,
-      lanes: parseInt(r.lanes) || (ow ? 1 : 2), a: this.key(l[0], l[1]), b: this.key(l[l.length - 2], l[l.length - 1]), ctrlA: null, ctrlB: null, chunk: ch.id };
+      halfW: (ow && !['motorway', 'trunk', 'primary', 'secondary', 'tertiary'].includes(r.hw) ? .8 : 1) * (HW_WIDTH[r.hw] || 3), lanes: parseInt(r.lanes) || (ow ? 1 : 2), a: this.key(l[0], l[1]), b: this.key(l[l.length - 2], l[l.length - 1]), ctrlA: null, ctrlB: null, chunk: ch.id };
     for (const key of [e.a, e.b]) { let s = this.nodes.get(key); if (!s) this.nodes.set(key, s = new Set()); s.add(e); }
     for (let k = 0; k < l.length - 2; k += 2) {
       const cells = new Set([Math.floor(l[k] / 50) + ',' + Math.floor(l[k + 1] / 50), Math.floor(l[k + 2] / 50) + ',' + Math.floor(l[k + 3] / 50), Math.floor((l[k] + l[k + 2]) / 100) + ',' + Math.floor((l[k + 1] + l[k + 3]) / 100)]);
@@ -306,7 +316,19 @@ const Drive = {
   },
   // Stopp-, Kein-Vortritt-Signale und Ampeln an die nahen Wegenden hängen
   addSign(s, g, ch, h) {
-    const a = (s.angle || 0) * Math.PI / 180, off = s.kind === 'strassenname' ? 4.2 : 3.4, sx = s.x + Math.cos(a) * off, sy = s.y - Math.sin(a) * off, y = h(sx, sy);
+    const a = (s.angle || 0) * Math.PI / 180, off = s.kind === 'strassenname' ? 4.2 : 3.4;
+    let sx = s.x + Math.cos(a) * off, sy = s.y - Math.sin(a) * off;
+    if (s.kind === 'stop' || s.kind === 'vortritt') ch.lights.push({ x: s.x, y: s.y, stop: s.kind });
+    // Pfosten nie auf der Fahrbahn: vom nächsten Strassenstück weg an den Rand schieben, sonst weglassen
+    for (let it = 0; it < 3; it++) {
+      const n = this.nearestEdgePoint(sx, sy, 12); if (!n) break;
+      const need = n.e.halfW + 1.1; if (n.d >= need) break;
+      let dx = sx - n.x, dy = sy - n.y, L = Math.hypot(dx, dy);
+      if (L < .05) { dx = Math.cos(n.hd); dy = -Math.sin(n.hd); L = 1; } // rechts der Fahrtrichtung
+      sx = n.x + dx / L * need; sy = n.y + dy / L * need;
+      if (it === 2) { const m = this.nearestEdgePoint(sx, sy, 12); if (m && m.d < m.e.halfW + .9) return; }
+    }
+    const y = h(sx, sy);
     const grp = new THREE.Group(); grp.position.set(sx, y, -sy); grp.rotation.y = Math.atan2(-Math.sin(a), Math.cos(a));
     const pole = new THREE.MeshLambertMaterial({ color: 0x9aa1a8 });
     if (s.kind === 'ampel') {
@@ -317,7 +339,6 @@ const Drive = {
       const L = { x: s.x, y: s.y, off: (Math.abs(Math.round(s.x * 7 + s.y * 3)) % 40), mats, chunk: ch.id, axisHd: a };
       this.lights.push(L); ch.lights.push(L); g.add(grp); return;
     }
-    if (s.kind === 'stop' || s.kind === 'vortritt') ch.lights.push({ x: s.x, y: s.y, stop: s.kind });
     const tx = Game.signTex(s.kind, s.value); if (!tx) return;
     const ph = s.kind === 'ortstafel' ? 2.1 : s.kind === 'strassenname' ? 2.6 : 2.2;
     const p = new THREE.Mesh(new THREE.CylinderGeometry(.045, .045, ph, 6), pole); p.position.y = ph / 2; grp.add(p);
@@ -474,15 +495,15 @@ const Drive = {
   },
   updatePlayer(dt) {
     const k = this.keys, t = this.touch, C = this.car;
-    const thr = (k.ArrowUp || k.KeyW || t.g) ? 1 : 0, brk = (k.ArrowDown || k.KeyS || t.b) ? 1 : 0, hb = (k.Space || t.hb) ? 1 : 0;
-    const st = ((k.ArrowRight || k.KeyD || t.r) ? 1 : 0) - ((k.ArrowLeft || k.KeyA || t.l) ? 1 : 0);
+    const thr = (k.ArrowUp || k.KeyW) ? 1 : Math.max(0, t.y), brk = (k.ArrowDown || k.KeyS) ? 1 : Math.max(0, -t.y), hb = k.Space ? 1 : 0;
+    const st = clamp(((k.ArrowRight || k.KeyD) ? 1 : 0) - ((k.ArrowLeft || k.KeyA) ? 1 : 0) + t.x, -1, 1);
     C.steer += (st - C.steer) * Math.min(1, dt * (st ? 4 : 6));
     const near = this.nearestEdgePoint(C.x, C.y, 25); this.nearRoad = near;
     const onRoad = near && near.d < (HW_WIDTH[near.e.hw] || 3) * (near.e.oneway ? 1 : 1.25) + 1;
     const vmax = onRoad ? 190 / 3.6 : 45 / 3.6;
     let acc = 0;
-    if (thr) acc += (C.v < 0 ? 8 : 3.4 * Math.max(0, 1 - C.v / vmax));
-    if (brk) acc += C.v > .5 ? -9 : -2.6;
+    if (thr) acc += thr * (C.v < 0 ? 8 : 3.4 * Math.max(0, 1 - C.v / vmax));
+    if (brk) acc += brk * (C.v > .5 ? -9 : -2.6);
     if (hb) acc += -7 * Math.sign(C.v);
     acc -= .00045 * C.v * Math.abs(C.v) * 9 + .18 * Math.sign(C.v) + (onRoad ? 0 : 2.2 * Math.sign(C.v) * Math.min(1, Math.abs(C.v) / 3));
     // Hangabtrieb

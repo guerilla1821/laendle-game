@@ -171,12 +171,13 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
 @media(max-width:700px){#dTop{gap:6px;padding:5px 8px}#dTop .lg{display:none}#dTop .sm{display:inline}#dWx{order:9;flex-basis:100%;font-size:12px}#dStreet{font-size:14px}}
 @media (pointer:coarse){
   #dKeys{display:none}
-  #dTouch{display:flex;justify-content:space-between;position:absolute;left:12px;right:12px;bottom:12px;pointer-events:none}
-  #dTouch .pad{display:flex;gap:10px;pointer-events:auto}
-  #dTouch button{width:68px;height:68px;border-radius:50%;border:2px solid rgba(255,255,255,.7);background:rgba(24,34,58,.55);color:#fff;font-size:24px;touch-action:none;user-select:none;-webkit-user-select:none}
-  #dTouch button.sm{width:52px;height:52px;align-self:flex-end;font-size:18px}
-  #dTouch button.on{background:rgba(196,31,58,.8)}
-  #dGauge{bottom:96px}#dMap{bottom:96px;width:110px;height:110px}
+  #dTouch{display:block;position:absolute;inset:auto 0 0 0;height:0;pointer-events:none}
+  #dTouch .stick{position:absolute;bottom:22px;width:132px;height:132px;border-radius:50%;background:rgba(24,34,58,.45);border:2px solid rgba(255,255,255,.55);pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none}
+  #dTouch .stick[data-axis="x"]{left:18px}#dTouch .stick[data-axis="y"]{right:18px}
+  #dTouch .stick.on{background:rgba(196,31,58,.35)}
+  #dTouch .ar{position:absolute;font-style:normal;font-size:14px;line-height:18px;color:rgba(255,255,255,.6)}
+  #dTouch .knob{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:rgba(255,255,255,.88);box-shadow:0 4px 14px rgba(0,0,0,.35);will-change:transform}
+  #dGauge{bottom:172px}#dMap{bottom:172px;width:110px;height:110px}
   #dTop .tbtn#dTime{display:none}
 }
 </style>
@@ -275,10 +276,10 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
     </div>
     <canvas id="dMap" width="180" height="180"></canvas>
     <div id="dGauge"><div id="dLimit" title="Höchstgeschwindigkeit">–</div><div><span id="dSpeed">0</span><small>km/h</small></div></div>
-    <div id="dKeys">W A S D oder Pfeile · Leertaste bremst · C Kamera · R Strasse · T Zeit · Esc Karte</div>
+    <div id="dKeys">W A S D oder Pfeile · Leertaste Handbremse · C Kamera · R Strasse · T Zeit · Esc Karte</div>
     <div id="dTouch">
-      <div class="pad"><button data-k="l" aria-label="Links">◀</button><button data-k="r" aria-label="Rechts">▶</button></div>
-      <div class="pad"><button data-k="hb" aria-label="Handbremse" class="sm">⏸</button><button data-k="b" aria-label="Bremsen und rückwärts">▼</button><button data-k="g" aria-label="Gas">▲</button></div>
+      <div class="stick" data-axis="x" aria-label="Lenken"><i class="ar" style="left:10px;top:50%;margin-top:-9px">◀</i><i class="ar" style="right:10px;top:50%;margin-top:-9px">▶</i><div class="knob"></div></div>
+      <div class="stick" data-axis="y" aria-label="Gas und Bremse"><i class="ar" style="top:8px;left:50%;margin-left:-7px">▲</i><i class="ar" style="bottom:8px;left:50%;margin-left:-7px">▼</i><div class="knob"></div></div>
     </div>
   </section>
 
