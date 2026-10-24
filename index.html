@@ -207,12 +207,32 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
 #wBuild button span{font-size:11px;font-weight:700}#wBuild button small{font-size:11px;color:var(--gold);font-weight:700}
 #wBuild button[aria-pressed="true"]{border-color:var(--red);background:#fff1f3}#wBuild button:disabled{opacity:.45}
 @media(max-width:700px){
-  #wHud{gap:7px;padding:5px 7px;flex-wrap:nowrap}#wHud .wst{font-size:12px}#wName,#wHud .lg,#wAtt{display:none}#wHud .speeds button{height:28px;min-width:26px;padding:0 5px;font-size:11px}
-  #wBoard{top:auto;bottom:118px;right:8px;min-width:0;font-size:11px;padding:6px 8px}#wBoard div:nth-child(n+4):not(.goal):not(.me){display:none}
+  #wHud{gap:7px;padding:5px 7px;flex-wrap:nowrap}#wHud .wst{font-size:12px}#wName,#wHud .lg,#wAtt,#wGoldR,#wLandBox{display:none}#wHud #wHelp{min-width:30px;padding:0 6px}#wHud .speeds button{height:28px;min-width:26px;padding:0 5px;font-size:11px}
+  #wBoard{top:auto;bottom:118px;right:8px;min-width:0;font-size:11px;padding:6px 8px}
   #wFeed{top:auto;bottom:118px;left:8px;max-width:52%}#wFeed div{font-size:11px;padding:4px 7px}#wFeed div:nth-child(n+3){display:none}
   #wBottom{left:8px;right:8px;transform:none;width:auto;flex-direction:column;align-items:stretch;gap:6px;bottom:8px}
   #wBuild button{flex:1}
+  #wTut{top:auto;bottom:160px;transform:translateX(-50%)}
+  #wBoard{max-height:45%}
+  #wBoard.open{top:62px;bottom:auto;max-height:calc(100% - 200px);z-index:4}
 }
+
+#wGrow,#wGoldR{font-size:11px;color:var(--good);font-weight:700}#wGrow.full{color:var(--red)}
+#wHud #wHelp{margin-left:auto}#wHud .speeds{margin-left:0}
+#wBoard{max-height:calc(100% - 200px);overflow:auto}
+#wBoard div{cursor:pointer}#wBoard em{font-style:normal;color:var(--muted);min-width:20px}
+#wBoard .dead{opacity:.45}#wBoard .tr{min-width:42px;text-align:right;color:var(--muted)}
+#wBoard div button{border:1px solid var(--line);background:#fff;border-radius:6px;font-size:12px;padding:1px 5px;cursor:pointer;margin-left:4px}
+#wBoard .pact{color:var(--good);font-weight:700}#wBoard .trait{color:var(--red)}
+#wBoard .more{display:block;width:100%;border:0;background:none;color:var(--blue);font:inherit;font-size:12px;font-weight:700;padding:4px 0 0;cursor:pointer;text-align:left}
+#wFeed div.warn{background:rgba(222,157,36,.95)}
+#wFeed div.ask{background:#fff;color:var(--ink);border:2px solid var(--blue);pointer-events:auto}
+#wFeed div.ask button{border:0;border-radius:6px;background:var(--blue);color:#fff;font:inherit;font-size:12px;font-weight:700;padding:3px 8px;margin-left:4px;cursor:pointer}
+#wFeed div.ask button.no{background:#e3e8ee;color:var(--ink)}
+#wBuild button em{font-style:normal;font-size:10px;color:var(--muted);white-space:nowrap}
+#wTut{left:50%;top:72px;transform:translateX(-50%);width:min(400px,calc(100% - 32px));box-sizing:border-box;padding:16px 18px;z-index:6}
+#wTut h3{margin:2px 0 6px;font-family:var(--display);font-size:20px}#wTut p{margin:0 0 12px;line-height:1.5;font-size:14px}#wTut .tn{font-size:11px;color:var(--muted);font-weight:700}
+.tutHi{outline:3px solid var(--red)!important;outline-offset:3px;border-radius:10px;position:relative;z-index:5}
 </style>
 </head>
 <body>
@@ -325,20 +345,22 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
     <div id="wHud" class="hud" hidden>
       <button class="tbtn" id="wExit" aria-label="Zur Karte">‹<span class="lg"> Karte</span></button>
       <b id="wName"></b>
-      <span class="wst" title="Truppen / Maximum">⚔ <b id="wTroops">0</b></span>
-      <span class="wst" title="Gold">● <b id="wGold">0</b></span>
-      <span class="wst" title="Landanteil">▦ <b id="wLand">0 %</b></span>
+      <span class="wst" id="wTroopsBox" title="Truppen / Maximum, Wachstum pro Sekunde">⚔ <b id="wTroops">0</b> <small id="wGrow"></small></span>
+      <span class="wst" id="wGoldBox" title="Gold, Einnahmen pro Sekunde">● <b id="wGold">0</b> <small id="wGoldR"></small></span>
+      <span class="wst" id="wLandBox" title="Landanteil">▦ <b id="wLand">0 %</b></span>
       <span id="wAtt"></span>
+      <button class="tbtn" id="wHelp" title="Anleitung">?</button>
       <div class="speeds" id="wSpeed" role="group" aria-label="Tempo"><button data-sp="0" aria-label="Pause">II</button><button data-sp="1" aria-label="Normal">▶</button><button data-sp="2" aria-label="Schnell">▶▶</button></div>
     </div>
     <div id="wBoard" class="hud"></div>
     <div id="wFeed"></div>
+    <div id="wTut" class="hud" hidden></div>
     <div id="wBottom" class="hud" hidden>
       <label class="wr"><span>Angriffsstärke <b id="wRatioV">30 %</b></span><input type="range" id="wRatio" min="5" max="100" step="5" value="30"></label>
       <div id="wBuild">
-        <button data-b="siedlung" title="Siedlung: +1500 max. Truppen">🏘️<span>Siedlung</span><small></small></button>
-        <button data-b="burg" title="Burg: doppelte Verteidigung im Umkreis von 300 m">🏰<span>Burg</span><small></small></button>
-        <button data-b="markt" title="Markt: +6 Gold pro Sekunde">💰<span>Markt</span><small></small></button>
+        <button data-b="siedlung" title="Siedlung: +1500 max. Truppen">🏘️<span>Siedlung</span><em></em><small></small></button>
+        <button data-b="burg" title="Burg: doppelte Verteidigung im Umkreis von 300 m">🏰<span>Burg</span><em></em><small></small></button>
+        <button data-b="markt" title="Markt: +6 Gold pro Sekunde">💰<span>Markt</span><em></em><small></small></button>
       </div>
     </div>
   </section>
