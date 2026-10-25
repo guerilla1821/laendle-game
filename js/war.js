@@ -250,9 +250,9 @@ const War = {
   // Kurzname des Oberhaupts für Meldungen
   boss(p) { const g = window.GEM_INFO && GEM_INFO[p.name]; return g ? `${g.short} (${p.name})` : p.name; },
   /* ---------- Regeln ---------- */
-  maxTroops(p) { return Math.round(Math.max(this.troopFloor || 0, 800 + p.cells * 1.5 + p.pers * 6 + p.jobs * 2) + this.count(p, 'siedlung') * 1500); },
+  maxTroops(p) { return Math.round(Math.max(this.troopFloor || 0, 800 + p.cells * 1.5 + p.pers * 6 + p.jobs * 2) + 1500 * Math.pow(this.count(p, 'siedlung'), .7)); },
   count(p, type) { let n = 0; for (const b of this.buildings) if (b.owner === p.id && b.type === type) n++; return n; },
-  costOf(p, type) { let n = 0; for (const b of this.buildings) if (b.by === p.id && b.type === type) n++; return Math.round(WAR_BUILD[type].cost * (1 + .6 * n)); },
+  costOf(p, type) { let n = 0; for (const b of this.buildings) if (b.by === p.id && b.type === type) n++; return Math.round(WAR_BUILD[type].cost * Math.pow(1.5, n)); },
   setOwner(i, pid, silent) {
     const M = this.map, old = this.owner[i];
     if (old) { const q = this.players[old - 1]; q.cells--; q.pers -= M.pers[i]; q.jobs -= M.jobs[i]; }
@@ -308,10 +308,10 @@ const War = {
       const i = a.cand[bestK];
       // Heimat zuerst: freies Land der eigenen Gemeinde ist billig, fremdes teurer
       let c = M.cost[i] * 1.6 * (M.gem[i] === a.att ? .5 : 1.6);
-      if (def) { const dens = def.troops / Math.max(1, def.cells); c = M.cost[i] * (2.5 + dens * 1.1) * this.defense(i, def.id) * (def.traitorUntil > this.t ? .6 : 1) * (M.gem[i] === def.id ? 1.6 : 1); }
+      if (def) { const dens = Math.min(10, def.troops / Math.max(1, def.cells)); c = M.cost[i] * (2.5 + dens * 1.1) * this.defense(i, def.id) * (def.traitorUntil > this.t ? .6 : 1) * (M.gem[i] === def.id ? 1.6 : 1); }
       if (a.troops < c) { a.troops = 0; break; }
       a.troops -= c; budget -= M.cost[i];
-      if (def) def.troops = Math.max(0, def.troops - c * .45);
+      if (def) def.troops = Math.max(0, def.troops - c * .55);
       a.cand[bestK] = a.cand[a.cand.length - 1]; a.cand.pop(); a.inSet[i] = 0;
       this.setOwner(i, a.att);
       for (const n of this.neighbors(i)) if (this.owner[n] === a.def && !a.inSet[n] && this.passable(n)) { a.cand.push(n); a.inSet[n] = 1; }
@@ -375,7 +375,7 @@ const War = {
     const max = this.maxTroops(p);
     // bauen
     const types = ['siedlung', 'markt', 'burg'], type = Math.random() < .5 ? 'siedlung' : Math.random() < .6 ? 'markt' : 'burg', cost = this.costOf(p, type);
-    if (p.gold >= cost * 1.5 && this.buildings.filter(b => b.owner === p.id).length < 2 + p.cells / 2500) { const i = this.randomOwnCell(p, type === 'burg'); if (i >= 0) this.place(p, type, i); }
+    if (p.gold >= cost * 1.5 && this.buildings.filter(b => b.by === p.id).length < 1 + p.cells / 4000) { const i = this.randomOwnCell(p, type === 'burg'); if (i >= 0) this.place(p, type, i); }
     if (this.attacks.filter(a => a.att === p.id).length >= 2) return;
     if (p.troops < max * this.lvl.attackAt) return;
     const neutral = A[p.id][0];
@@ -459,9 +459,12 @@ const War = {
   hover(sx, sy) {
     if (!this.map) return; const i = this.cellAt(sx, sy), tip = $('#wTip');
     if (i < 0 || !this.map.gem[i] || this.phase === 'off') { tip.hidden = true; return; }
-    const M = this.map, o = this.owner[i], hm = M.hoehe[i], cls = ['', 'Siedlung', 'Wiese', 'Wald', 'Wasser', 'Fels'][M.boden[i] & 15] || '';
-    tip.hidden = false; tip.style.left = sx + 14 + 'px'; tip.style.top = sy + 14 + 'px';
-    tip.innerHTML = `<b>${o ? esc(this.players[o - 1].name) : 'Neutral'}</b><br>${esc(M.names[M.gem[i] - 1])} · ${cls}${hm ? ` · ${hm} m` : ''}${M.boden[i] & 16 ? ' · Strasse' : ''}<br>Gelände: ${M.cost[i] === Infinity ? 'unpassierbar' : '×' + M.cost[i].toFixed(1)}`;
+    const M = this.map, o = this.owner[i], q = o ? this.players[o - 1] : null, c = M.cost[i];
+    const terr = c === Infinity ? 'WASSER' : c < 1.3 ? 'LEICHT' : c < 2 ? 'MITTEL' : c < 3 ? 'SCHWER' : 'SEHR SCHWER';
+    const lines = [q ? `<b style="color:${q.color}">${esc(q.name.toUpperCase())}</b>${q === this.me ? ' (DU)' : this.me && this.allied(q.id, this.me.id) ? ' (VERBÜNDET)' : ''}` : '<b>FREIES LAND</b>'];
+    if (q && q !== this.me) lines.push(`TRUPPEN ${fmtK(q.troops)}`);
+    if (c !== Infinity) lines.push(`EROBERN: ${terr}${q && q !== this.me && M.gem[i] === q.id ? ', HEIMVORTEIL' : ''}${q && this.defense(i, q.id) > 1 ? ', BURG' : ''}`); else lines.push('NICHT EROBERBAR');
+    tip.hidden = false; tip.style.left = sx + 14 + 'px'; tip.style.top = sy + 14 + 'px'; tip.innerHTML = lines.join('<br>');
   },
   zoomAt(sx, sy, f) {
     if (this.is3D()) { this.cam.s = clamp(this.cam.s * f, this.minS || .3, 40); return; }
