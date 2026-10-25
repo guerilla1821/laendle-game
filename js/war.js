@@ -17,7 +17,7 @@ const WAR_LEVELS = {
   normal: { name: 'NORMAL', grow: 1, attackAt: .45, grace: 90, maxOnMe: 2, score: 1 },
   schwer: { name: 'SCHWER', grow: 1.12, attackAt: .38, grace: 30, maxOnMe: 4, score: 1.5 },
 };
-const MERC_MAX = 4, MERC_PAUSE = 60, BOT_MERC_MAX = 2, COLLAPSE_SHARE = 0.01, WIN_SHARE = 0.7, PACT_TIME = 300, TRAITOR_TIME = 30;
+const COLLAPSE_AFTER = 360, COLLAPSE_MIN = 0.003, PREY_AFTER = 360, PREY_SHARE = 0.02, MERC_MAX = 4, MERC_PAUSE = 60, BOT_MERC_MAX = 2, COLLAPSE_SHARE = 0.01, WIN_SHARE = 0.7, PACT_TIME = 300, TRAITOR_TIME = 30;
 
 const War = {
   level: store.get('kampf-level') || 'normal', inited: false, map: null, phase: 'off', speed: 1, halt: new Set(), score: 0, ratio: .3, build: null, cam: { x: 0, y: 0, s: 1, tilt: 0, yaw: 0 },
@@ -364,8 +364,8 @@ const War = {
       // Aufholhilfe: Niemand fällt unter die Hälfte der durchschnittlichen Truppenstärke (Grundwert ohne Siedlungen)
       const al = this.players.filter(p => p.alive), raw = p => 800 + p.cells * 1.5 + p.pers * 6 + p.jobs * 2;
       this.troopFloor = Math.max(this.startFloor || 0, Math.round(.5 * al.reduce((s, p) => s + raw(p), 0) / Math.max(1, al.length)));
-      // Kleinstreste nicht künstlich weiterspielen: wer einmal über 2 % hatte und unter 1 % fällt, bricht zusammen (Gegner auch nach 5 Minuten unter 1 %)
-      for (const p of al) { const sh = p.cells / M.land; p.peak = Math.max(p.peak || 0, sh); if (!this.over && sh < COLLAPSE_SHARE && (p.peak >= .02 || (p.bot && this.t > 300))) this.collapse(p); }
+      // Kleinstreste nicht künstlich weiterspielen: ab Minute 6 bricht zusammen, wer unter 1 % fällt; jederzeit, wer nach dem Start unter 0,3 % schrumpft
+      for (const p of al) { const sh = p.cells / M.land; p.peak = Math.max(p.peak || 0, sh); if (!this.over && ((this.t > COLLAPSE_AFTER && sh < COLLAPSE_SHARE) || (p.peak >= .01 && sh < COLLAPSE_MIN))) this.collapse(p); }
     }
     for (const p of this.players) if (p.bot && p.alive && this.t >= p.nextAi) { this.botThink(p); p.nextAi = this.t + 1.2 + Math.random() * 2.2; }
     if (Math.floor(this.t * 10) % 10 === 0) { this.labels(); this.updateHud(); this.pactTick(); }
@@ -405,11 +405,11 @@ const War = {
     const types = ['siedlung', 'markt', 'burg'], type = Math.random() < .5 ? 'siedlung' : Math.random() < .6 ? 'markt' : 'burg', cost = this.costOf(p, type);
     if (p.gold >= cost * 1.5 && this.buildings.filter(b => b.by === p.id).length < 1 + p.cells / 4000) { const i = this.randomOwnCell(p, type === 'burg'); if (i >= 0) this.place(p, type, i); }
     if (this.attacks.filter(a => a.att === p.id).length >= 2) return;
-    // Kleine Nachbarn (weniger als ein Viertel der eigenen Fläche, unter 4 %) werden bevorzugt und früher angegriffen
+    // Kleine Nachbarn (weniger als ein Viertel der eigenen Fläche, unter 2 %) werden ab Minute 6 bevorzugt und früher angegriffen
     let prey = null;
-    if (this.t > 120) for (const q of this.players) {
-      if (!q.alive || q === p || !A[p.id][q.id] || this.allied(p.id, q.id) || q.cells > p.cells * .25 || q.cells / this.map.land > .04) continue;
-      if (q === this.me && (this.t < Math.max(this.lvl.grace, (q.peak || 0) >= .02 ? 0 : 300) || this.attacks.filter(a => a.def === q.id && a.att !== p.id).length >= this.lvl.maxOnMe)) continue;
+    if (this.t > PREY_AFTER) for (const q of this.players) {
+      if (!q.alive || q === p || !A[p.id][q.id] || this.allied(p.id, q.id) || q.cells > p.cells * .25 || q.cells / this.map.land > PREY_SHARE) continue;
+      if (q === this.me && this.attacks.filter(a => a.def === q.id && a.att !== p.id).length >= this.lvl.maxOnMe) continue;
       if (!prey || q.cells < prey.cells) prey = q;
     }
     if (prey && p.troops >= max * this.lvl.attackAt * .6 && p.troops > prey.troops * 1.2) { this.attack(p.id, prey.id, p.troops * .5, prey.lx, prey.ly); return; }
