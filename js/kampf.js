@@ -261,8 +261,6 @@ const Kampf = {
     else if (m === 'hs') { this.panel(`<h2>HIGHSCORE</h2><div id="hsBox"><p>LADE...</p></div><div class="trow" style="margin-top:16px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`); HS.list().then(l => { const b = $('#hsBox'); if (b) b.innerHTML = HS.table(l); }); }
     else if (m === 'credits') this.panel(`<h2>CREDITS</h2><div class="cr">
       <h3>SPIEL</h3>
-      <p><b>IDEE UND SPIELDESIGN</b><br>Elias Batliner</p>
-      <p><b>PROGRAMMIERUNG, GRAFIK, MUSIK</b><br>Claude (Anthropic) im Auftrag von Elias Batliner</p>
       <p><b>SPIELPRINZIP</b><br>inspiriert von <a href="https://openfront.io" target="_blank" rel="noopener">OpenFront</a></p>
       <p><b>MUSIK</b><br>Marsch um Liechtenstein, eigene Komposition</p>
       <p><b>SCHRIFT</b><br>Press Start 2P von CodeMan38, SIL Open Font License 1.1</p>
