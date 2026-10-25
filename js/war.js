@@ -9,7 +9,7 @@ const WAR_BUILD = {
   siedlung: { name: 'Siedlung', cost: 220, eff: '+1500 Truppen-Max.', info: 'Erhöht dein Truppen-Maximum um 1500. Mehr Maximum heisst auch schnelleres Wachstum.' },
   burg: { name: 'Burg', cost: 180, eff: 'Abwehr ×2, 300 m', info: 'Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen pro Feld. Bau sie an die Grenze zu starken Nachbarn.' },
   markt: { name: 'Markt', cost: 260, eff: '+6 Gold/s', info: 'Bringt 6 Gold pro Sekunde zusätzlich.' },
-  soeldner: { name: 'Söldner', cost: 400, eff: '+20 % Truppen', info: 'Sofort Truppen in Höhe von 20 % deines Maximums. Höchstens 4 Mal pro Partie, jede Anwerbung kostet doppelt so viel, danach 60 s Pause.' },
+  soeldner: { name: 'Söldner', cost: 400, eff: '+20 % Truppen', info: 'Sofort Truppen in Höhe von 20 % deines Maximums. Du kannst 4 Mal pro Partie anwerben, jede Anwerbung kostet doppelt so viel, danach 60 s Pause.' },
 };
 // Schwierigkeit: Wachstum der Computergegner, ab welcher Truppenstärke sie angreifen, Schonfrist für dich, wie viele dich gleichzeitig angreifen, Punkte
 const WAR_LEVELS = {
@@ -456,7 +456,7 @@ const War = {
   hire(p) {
     if (!p || !p.alive || this.over) return false;
     const cost = this.costOf(p, 'soeldner'), max = this.maxTroops(p), add = Math.min(Math.round(max * .2), Math.round(max - p.troops));
-    if ((p.merc || 0) >= MERC_MAX) { if (p === this.me) toast(`Alle ${MERC_MAX} Söldner dieser Partie sind angeworben. Mehr gibt es nicht.`); return false; }
+    if ((p.merc || 0) >= MERC_MAX) { if (p === this.me) toast(`Du hast alle ${MERC_MAX} Anwerbungen dieser Partie genutzt.`); return false; }
     if (this.t - (p.mercT || -1e9) < MERC_PAUSE) { if (p === this.me) toast(`Söldner erst in ${Math.ceil(MERC_PAUSE - (this.t - p.mercT))} s wieder.`); return false; }
     if (p.gold < cost) { if (p === this.me) toast(`Zu wenig Gold für Söldner: ${fmtK(cost)} nötig.`); return false; }
     if (add < max * .05) { if (p === this.me) toast('Deine Truppen sind fast voll. Söldner lohnen sich erst, wenn Truppen fehlen.'); return false; }
@@ -541,7 +541,7 @@ const War = {
   clampCam() { const M = this.map; this.cam.x = clamp(this.cam.x, 0, M.w); this.cam.y = clamp(this.cam.y, 0, M.h); },
   updateBuildBtns() {
     document.querySelectorAll('#wBuild button').forEach(b => { const t = b.dataset.b, c = this.me ? this.costOf(this.me, t) : WAR_BUILD[t].cost; b.querySelector('small').textContent = fmtK(c) + ' Gold'; b.querySelector('em').textContent = WAR_BUILD[t].eff; b.setAttribute('aria-pressed', this.build === t); b.classList.toggle('poor', !this.me || this.me.gold < c);
-      if (t === 'soeldner') { const left = Math.max(0, MERC_MAX - (this.me ? this.me.merc || 0 : 0)); b.dataset.left = left + '/' + MERC_MAX; if (!left) { b.querySelector('small').textContent = 'KEINE MEHR'; b.classList.add('poor'); } } });
+      if (t === 'soeldner') { const left = Math.max(0, MERC_MAX - (this.me ? this.me.merc || 0 : 0)); b.dataset.left = left + '×'; b.title = `Söldner: sofort +20 % Truppen für Gold. Noch ${left} von ${MERC_MAX} Anwerbungen.`; if (!left) { b.querySelector('small').textContent = 'GENUTZT'; b.classList.add('poor'); } } });
     if (this.build && this.me && this.me.gold < this.costOf(this.me, this.build)) { this.build = null; document.querySelectorAll('#wBuild button').forEach(b => b.setAttribute('aria-pressed', false)); }
   },
   updateHud() {
@@ -643,7 +643,7 @@ const War = {
       { sel: '#wBoard', t: 'Rangliste und Bündnisse', b: 'Die drei Führenden. Aufklappen zeigt alle Gemeinden. Mit ' + Spr.img('pakt', 1) + ' bietest du ein Bündnis an (5 Minuten). Verbündete greifen sich nicht an. Wer ein Bündnis bricht, gilt 30 s als Verräter.' },
       { sel: '#wc', t: 'Ausbreiten', b: 'Tippe auf ungefärbtes Land neben deinem Gebiet. Talboden ist billig, Hang, Wald und Berge kosten viel mehr Truppen pro Feld. Hauptstrassen sind billig, Wasser geht nicht. Freies Land deiner eigenen Gemeinde kostet nur die Hälfte, fremdes mehr. Und daheim verteidigst du dich besser (Heimvorteil).' },
       { sel: '.wr', t: 'Angriffsstärke', b: 'So viel Prozent deiner Truppen schickt ein Tippen los. Nicht verbrauchte Truppen kehren zurück. Nachbarn kosten mehr, je dichter sie besetzt sind.' },
-      { sel: '#wBuild', t: 'Gebäude und Söldner', b: 'SIEDLUNG: +1500 Truppen-Maximum, also schnelleres Wachstum.<br>BURG: Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen.<br>MARKT: +6 Gold pro Sekunde.<br>SÖLDNER: sofort +20 % Truppen für Gold, höchstens 4 Mal pro Partie.<br>Jedes weitere Gebäude derselben Art und jede Anwerbung wird teurer.' },
+      { sel: '#wBuild', t: 'Gebäude und Söldner', b: 'SIEDLUNG: +1500 Truppen-Maximum, also schnelleres Wachstum.<br>BURG: Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen.<br>MARKT: +6 Gold pro Sekunde.<br>SÖLDNER: sofort +20 % Truppen für Gold. Du kannst 4 Mal pro Partie anwerben, die Zahl am Knopf zeigt, wie oft noch.<br>Jedes weitere Gebäude derselben Art und jede Anwerbung wird teurer.' },
     ];
   },
   tutorial(k) {
