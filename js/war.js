@@ -13,7 +13,7 @@ const WAR_BUILD = {
 const WIN_SHARE = 0.7, PACT_TIME = 300, TRAITOR_TIME = 30;
 
 const War = {
-  inited: false, map: null, phase: 'off', speed: 1, halt: new Set(), score: 0, ratio: .3, build: null, cam: { x: 0, y: 0, s: 1 },
+  inited: false, map: null, phase: 'off', speed: 1, halt: new Set(), score: 0, ratio: .3, build: null, cam: { x: 0, y: 0, s: 1, tilt: 0, yaw: 0 },
 
   /* ---------- Einstieg ---------- */
   async open() {
@@ -32,17 +32,40 @@ const War = {
     if (this.inited) return; this.inited = true;
     const c = this.cv = $('#wc'); this.ctx = c.getContext('2d');
     addEventListener('resize', () => this.resize());
-    const pts = new Map(); let down = null, pinch = null;
-    c.addEventListener('pointerdown', e => { $('#wTip').hidden = true; c.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); if (pts.size === 1) down = { x: e.clientX, y: e.clientY, cx: this.cam.x, cy: this.cam.y, moved: false };
-      if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), s: this.cam.s, mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2 }; down = null; } });
+    const pts = new Map(); let down = null, pinch = null, rdrag = null;
+    c.addEventListener('contextmenu', e => e.preventDefault());
+    c.addEventListener('pointerdown', e => {
+      $('#wTip').hidden = true; c.setPointerCapture(e.pointerId);
+      if (e.button === 2) { rdrag = { x: e.clientX, y: e.clientY, t: this.cam.tilt, w: this.cam.yaw }; return; }   // rechte Maustaste: kippen und drehen
+      pts.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pts.size === 1) down = { x: e.clientX, y: e.clientY, cx: this.cam.x, cy: this.cam.y, moved: false };
+      if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), s: this.cam.s, my: (a[1] + b[1]) / 2, an: Math.atan2(b[1] - a[1], b[0] - a[0]), t: this.cam.tilt, w: this.cam.yaw }; down = null; }
+    });
     c.addEventListener('pointermove', e => {
+      if (rdrag) { this.cam.tilt = clamp(rdrag.t + (rdrag.y - e.clientY) * .006, 0, 1.15); this.cam.yaw = rdrag.w + (e.clientX - rdrag.x) * .006; this.update3D(); return; }
       if (!pts.has(e.pointerId)) { this.hover(e.clientX, e.clientY); return; }
       pts.set(e.pointerId, [e.clientX, e.clientY]);
-      if (pinch && pts.size === 2) { const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]); this.zoomAt(pinch.mx, pinch.my, pinch.s * d / pinch.d / this.cam.s); return; }
-      if (down) { const dx = e.clientX - down.x, dy = e.clientY - down.y; if (Math.hypot(dx, dy) > 8) down.moved = true; if (down.moved) { this.cam.x = down.cx - dx / this.cam.s; this.cam.y = down.cy - dy / this.cam.s; this.clampCam(); } }
+      if (pinch && pts.size === 2) {
+        // zwei Finger: auseinander = zoomen, gemeinsam hoch/runter = kippen, drehen = drehen
+        const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), my = (a[1] + b[1]) / 2, an = Math.atan2(b[1] - a[1], b[0] - a[0]);
+        this.cam.s = clamp(pinch.s * d / pinch.d, this.minS || .3, 40);
+        const dy = pinch.my - my, dz = Math.sign(dy) * Math.max(0, Math.abs(dy) - 24); this.cam.tilt = clamp(pinch.t + dz * .008, 0, 1.15);
+        let da = an - pinch.an; if (da > Math.PI) da -= 2 * Math.PI; if (da < -Math.PI) da += 2 * Math.PI;
+        this.cam.yaw = pinch.w - (Math.abs(da) > .3 || this.cam.tilt > .05 ? da : 0);
+        this.update3D(); return;
+      }
+      if (down) {
+        const dx = e.clientX - down.x, dy = e.clientY - down.y; if (Math.hypot(dx, dy) > 8) down.moved = true;
+        if (down.moved) { const cy = Math.cos(this.cam.yaw), sy = Math.sin(this.cam.yaw), s = this.cam.s; this.cam.x = down.cx - (cy * dx + sy * dy) / s; this.cam.y = down.cy - (-sy * dx + cy * dy) / s; this.clampCam(); }
+      }
     });
-    const up = e => { if (!pts.has(e.pointerId)) return; pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (down && !down.moved && pts.size === 0) this.tap(e.clientX, e.clientY); if (pts.size === 0) down = null; };
+    const up = e => {
+      if (rdrag) { rdrag = null; return; }
+      if (!pts.has(e.pointerId)) return; pts.delete(e.pointerId); if (pts.size < 2) pinch = null;
+      if (down && !down.moved && pts.size === 0) this.tap(e.clientX, e.clientY); if (pts.size === 0) down = null;
+    };
     c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
+    $('#w3d').onclick = () => { snd('tap'); if (this.is3D()) { this.cam.tilt = 0; this.cam.yaw = 0; } else { this.cam.tilt = .85; } this.update3D(); };
     c.addEventListener('wheel', e => { e.preventDefault(); this.zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * .0015)); }, { passive: false });
     $('#wExit').onclick = () => this.exit(); $('#wHelp').onclick = () => { snd('tap'); this.tutorial(0); };
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.halt.add('hidden'); else this.halt.delete('hidden'); });
@@ -57,7 +80,13 @@ const War = {
     };
     requestAnimationFrame(loop);
   },
-  resize() { if (!this.cv) return; const r = this.cv.getBoundingClientRect(); this.dpr = Math.min(devicePixelRatio || 1, 2); this.W = r.width; this.H = r.height; this.cv.width = r.width * this.dpr; this.cv.height = r.height * this.dpr; },
+  resize() { if (!this.cv) return; const r = this.cv.getBoundingClientRect(); this.dpr = Math.min(devicePixelRatio || 1, 2); this.W = r.width; this.H = r.height; this.cv.width = r.width * this.dpr; this.cv.height = r.height * this.dpr; if (window.War3D && War3D.ok) War3D.resize(); },
+  is3D() { return this.cam.tilt > .02 || Math.abs(this.cam.yaw) > .02; },
+  update3D() {
+    if (this.is3D() && !War3D.ok && !War3D.init(this)) { this.cam.tilt = 0; this.cam.yaw = 0; toast('3D wird von diesem Gerät nicht unterstützt.'); }
+    const on = this.is3D() && War3D.ok; $('#wc3').hidden = !on; $('#w3d').textContent = on ? '2D' : '3D';
+  },
+  proj(gx, gy, lift) { return this.is3D() && War3D.ok ? War3D.project(gx, gy, lift) : this.g2s(gx, gy); },
 
   /* ---------- Karte laden ---------- */
   async loadMap() {
@@ -123,7 +152,7 @@ const War = {
     const best = this.players.map(() => ({ v: -1, i: -1 })), sum = this.players.map(() => [0, 0, 0]);
     for (let i = 0; i < M.N; i++) { const g = M.gem[i]; if (!g || M.cost[i] === Infinity) continue; const v = M.pers[i] * 3 + M.jobs[i] + (M.boden[i] & 32 ? .2 : 0); const s = sum[g - 1]; s[0] += i % M.w; s[1] += Math.floor(i / M.w); s[2]++; if (v > best[g - 1].v) best[g - 1] = { v, i }; }
     this.players.forEach((p, k) => { const b = best[k].i >= 0 ? best[k].i : Math.round(sum[k][1] / sum[k][2]) * M.w + Math.round(sum[k][0] / sum[k][2]); p.start = b; p.lx = b % M.w; p.ly = Math.floor(b / M.w); });
-    this.fit(); this.fullRepaint();
+    this.cam.tilt = 0; this.cam.yaw = 0; this.update3D(); this.fit(); this.fullRepaint();
     $('#wHud').hidden = true; $('#wBottom').hidden = true; $('#wBoard').hidden = true; $('#wFeed').innerHTML = ''; $('#wChoose').hidden = false;
     $('#wChoose').innerHTML = `<b>Wähle deine Gemeinde</b><span>Tippe auf die Karte oder hier:</span><div class="wgems">${this.players.map(p => `<button data-g="${p.id}" style="--c:${p.color}">${esc(p.name)}</button>`).join('')}</div>`;
     $('#wChoose').querySelectorAll('button').forEach(b => b.onclick = () => this.startGame(+b.dataset.g));
@@ -325,7 +354,7 @@ const War = {
   /* ---------- Eingabe ---------- */
   s2g(sx, sy) { return [(sx - this.W / 2) / this.cam.s + this.cam.x, (sy - this.H / 2) / this.cam.s + this.cam.y]; },
   g2s(gx, gy) { return [(gx - this.cam.x) * this.cam.s + this.W / 2, (gy - this.cam.y) * this.cam.s + this.H / 2]; },
-  cellAt(sx, sy) { const r = this.cv.getBoundingClientRect(), [gx, gy] = this.s2g(sx - r.left, sy - r.top), x = Math.floor(gx), y = Math.floor(gy), M = this.map; if (x < 0 || y < 0 || x >= M.w || y >= M.h) return -1; return y * M.w + x; },
+  cellAt(sx, sy) { if (this.is3D() && War3D.ok) { const r = this.cv.getBoundingClientRect(); return War3D.pick(sx - r.left, sy - r.top); } const r = this.cv.getBoundingClientRect(), [gx, gy] = this.s2g(sx - r.left, sy - r.top), x = Math.floor(gx), y = Math.floor(gy), M = this.map; if (x < 0 || y < 0 || x >= M.w || y >= M.h) return -1; return y * M.w + x; },
   tap(sx, sy) {
     const i = this.cellAt(sx, sy), M = this.map; if (i < 0 || !M.gem[i]) return;
     if (this.phase === 'choose') { this.startGame(M.gem[i]); return; }
@@ -348,6 +377,7 @@ const War = {
     tip.innerHTML = `<b>${o ? esc(this.players[o - 1].name) : 'Neutral'}</b><br>${esc(M.names[M.gem[i] - 1])} · ${cls}${hm ? ` · ${hm} m` : ''}${M.boden[i] & 16 ? ' · Strasse' : ''}<br>Gelände: ${M.cost[i] === Infinity ? 'unpassierbar' : '×' + M.cost[i].toFixed(1)}`;
   },
   zoomAt(sx, sy, f) {
+    if (this.is3D()) { this.cam.s = clamp(this.cam.s * f, this.minS || .3, 40); return; }
     const r = this.cv.getBoundingClientRect(), [gx, gy] = this.s2g(sx - r.left, sy - r.top);
     this.cam.s = clamp(this.cam.s * f, this.minS || .3, 40); this.cam.x = gx - (sx - r.left - this.W / 2) / this.cam.s; this.cam.y = gy - (sy - r.top - this.H / 2) / this.cam.s; this.clampCam();
   },
@@ -455,7 +485,7 @@ const War = {
       { sel: '#wBuild', t: 'Gebäude', b: 'SIEDLUNG: +1500 Truppen-Maximum, also schnelleres Wachstum.<br>BURG: Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen.<br>MARKT: +6 Gold pro Sekunde.<br>Jedes weitere Gebäude derselben Art wird teurer.' },
       { sel: '#wBoard', t: 'Rangliste und Bündnisse', b: 'Die drei Führenden. Aufklappen zeigt alle Gemeinden. Mit ' + Spr.img('pakt', 1) + ' bietest du ein Bündnis an (5 Minuten). Verbündete greifen sich nicht an. Wer ein Bündnis bricht, gilt 30 s als Verräter.' },
       { sel: '#wScoreBox', t: 'Punkte', b: 'Neutrales Feld 1 Punkt, feindliches Feld 3, Gebäude 50, ausgelöschte Gemeinde 5000, Sieg 50000 plus Zeitbonus. Schwache Startgemeinden zählen mehr (Faktor bis ×3).' },
-      { sel: '#wHelp', t: 'Hilfe', b: 'Ziehen verschiebt die Karte, Mausrad oder zwei Finger zoomen. Während die Anleitung offen ist, ruht das Spiel. Mit ? kommt sie wieder.' },
+      { sel: '#w3d', t: 'Ansicht und Hilfe', b: 'Ziehen verschiebt die Karte, Mausrad oder zwei Finger zoomen. Zwei Finger gemeinsam hoch oder runter kippen die Karte in 3D, Drehen dreht sie. Am Computer mit der rechten Maustaste. Der Knopf 3D/2D schaltet um. Während die Anleitung offen ist, ruht das Spiel. Mit ? kommt sie wieder.' },
     ];
   },
   tutorial(k) {
@@ -496,40 +526,40 @@ const War = {
   render() {
     const g = this.ctx, M = this.map; if (!M) return;
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); g.fillStyle = '#000'; g.fillRect(0, 0, this.W, this.H);
-    if (this.ovDirty) { this.ovCtx.putImageData(this.ovImg, 0, 0); this.ovDirty = false; }
-    const [ox, oy] = this.g2s(0, 0), s = this.cam.s;
+    if (this.ovDirty) { this.ovCtx.putImageData(this.ovImg, 0, 0); this.ovDirty = false; if (window.War3D) War3D.dirty = true; }
+    const [ox, oy] = this.g2s(0, 0), s = this.cam.s, td = this.is3D() && War3D.ok, P = (x, y, l) => this.proj(x, y, l);
+    if (td) { g.clearRect(0, 0, this.W, this.H); War3D.render(); }
     const R = this.relief;
-    if (R && R.complete && R.naturalWidth) {
+    if (!td && R && R.complete && R.naturalWidth) {
       // Schweiz und Österreich nur als dunkles Relief
       const lx = (-622.276 - (M.x0 - O0[0])) / M.cell, ly = ((M.y1 - O0[1]) - 26477.241) / M.cell, k = 20.01346 / M.cell;
       g.globalAlpha = .28; g.imageSmoothingEnabled = false;
       g.drawImage(R, ox + lx * s, oy + ly * s, R.naturalWidth * k * s, R.naturalHeight * k * s);
       g.globalAlpha = 1;
     }
-    g.imageSmoothingEnabled = false; g.drawImage(this.base, ox, oy, M.w * s, M.h * s);
-    g.drawImage(this.ov, ox, oy, M.w * s, M.h * s);
+    g.imageSmoothingEnabled = false; if (!td) { g.drawImage(this.base, ox, oy, M.w * s, M.h * s); g.drawImage(this.ov, ox, oy, M.w * s, M.h * s); }
     g.textAlign = 'center'; g.textBaseline = 'middle';
     const font = this.labelFont || 'monospace';
     if (this.phase === 'play') {
       g.setLineDash([2, 4]); g.lineWidth = 2;
-      for (const b of this.buildings) if (b.type === 'burg' && b.owner === this.me.id) { const [x, y] = this.g2s(b.i % M.w + .5, Math.floor(b.i / M.w) + .5); g.strokeStyle = '#fff1e8'; g.beginPath(); g.arc(Math.round(x), Math.round(y), 12 * s, 0, 7); g.stroke(); }
+      for (const b of this.buildings) if (b.type === 'burg' && b.owner === this.me.id) { const bx = b.i % M.w + .5, by = Math.floor(b.i / M.w) + .5; g.strokeStyle = '#fff1e8'; g.beginPath(); for (let k = 0; k <= 24; k++) { const a = k / 24 * Math.PI * 2, [x, y] = P(bx + Math.cos(a) * 12, by + Math.sin(a) * 12); k ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); }
       g.setLineDash([]);
       const sc = s >= 3 ? 3 : s >= 1.5 ? 2 : 1;
       for (const b of this.buildings) {
-        const [x, y] = this.g2s(b.i % M.w + .5, Math.floor(b.i / M.w) + .5); if (x < -30 || y < -30 || x > this.W + 30 || y > this.H + 30) continue;
+        const [x, y] = P(b.i % M.w + .5, Math.floor(b.i / M.w) + .5, 1); if (x < -30 || y < -30 || x > this.W + 30 || y > this.H + 30) continue;
         const sz = 8 * sc, X = Math.round(x - sz / 2), Y = Math.round(y - sz / 2);
         g.fillStyle = '#000'; g.fillRect(X - 2, Y - 2, sz + 4, sz + 4); g.fillStyle = this.players[b.owner - 1].color; g.fillRect(X - 1, Y - 1, sz + 2, sz + 2);
         g.fillStyle = '#000'; g.fillRect(X, Y, sz, sz); g.drawImage(Spr.canvas(b.type, sc), X, Y);
       }
       for (const a of this.attacks) if (a.att === this.me.id || a.def === this.me.id) {
-        const [x, y] = this.g2s(a.tx + .5, a.ty + .5), r = 8 + (Math.floor(performance.now() / 150) % 3) * 3;
+        const [x, y] = P(a.tx + .5, a.ty + .5), r = 8 + (Math.floor(performance.now() / 150) % 3) * 3;
         g.strokeStyle = a.att === this.me.id ? '#fff1e8' : '#ff004d'; g.lineWidth = 2; g.strokeRect(Math.round(x - r), Math.round(y - r), r * 2, r * 2);
       }
     }
     const txt = (t, x, y, col) => { g.fillStyle = '#000'; for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [2, 2]]) g.fillText(t, x + dx, y + dy); g.fillStyle = col; g.fillText(t, x, y); };
     for (const p of this.players) {
       if (this.phase === 'play' && !p.alive) continue;
-      const [x0, y0] = this.g2s(p.lx + .5, p.ly + .5), x = Math.round(x0), y = Math.round(y0);
+      const [x0, y0] = P(p.lx + .5, p.ly + .5, 3), x = Math.round(x0), y = Math.round(y0);
       const area = p.cells * s * s, size = this.phase === 'play' ? (area > 60000 ? 16 : area > 6000 ? 10 : 8) : (s > 2.5 ? 10 : 8);
       if (x < -100 || y < -50 || x > this.W + 100 || y > this.H + 50) continue;
       g.font = `${size}px ${font}`;
