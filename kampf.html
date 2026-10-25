@@ -116,6 +116,7 @@ img.spr{image-rendering:pixelated;image-rendering:crisp-edges;vertical-align:mid
 #wBuild{display:flex;gap:10px}
 #wBuild button{display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:#000;padding:6px 8px;min-width:78px;box-shadow:0 0 0 2px var(--panel2)}
 #wBuild button span{font-size:8px}#wBuild button em{font-style:normal;font-size:7px;color:var(--dim);white-space:nowrap}#wBuild button small{font-size:8px;color:var(--hi)}
+#wBuild button{position:relative}#wBuild button[data-left]::after{content:attr(data-left);position:absolute;top:3px;right:4px;font-size:7px;color:var(--hi)}
 #wBuild button[aria-pressed="true"]{background:var(--panel2);box-shadow:0 0 0 2px var(--hi)}#wBuild button.poor{opacity:.35}
 #wTut{position:absolute;left:50%;transform:translateX(-50%);width:min(440px,calc(100% - 28px));padding:16px 16px 12px;z-index:6;background:#000;box-shadow:0 0 0 2px #000,0 0 0 4px var(--hi),0 0 0 6px #000}
 #wTut.top{top:calc(var(--th,58px) + 14px)}#wTut.bottom{bottom:calc(var(--bh,110px) + 14px)}#wTut{max-height:calc(100% - var(--th,58px) - var(--bh,110px) - 30px);overflow:auto}
