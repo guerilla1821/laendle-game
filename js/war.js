@@ -409,7 +409,7 @@ const War = {
     let prey = null;
     if (this.t > PREY_AFTER) for (const q of this.players) {
       if (!q.alive || q === p || !A[p.id][q.id] || this.allied(p.id, q.id) || q.cells > p.cells * .25 || q.cells / this.map.land > PREY_SHARE) continue;
-      if (q === this.me && this.attacks.filter(a => a.def === q.id && a.att !== p.id).length >= this.lvl.maxOnMe) continue;
+      if (q === this.me && this.shielded(p)) continue;
       if (!prey || q.cells < prey.cells) prey = q;
     }
     if (prey && p.troops >= max * this.lvl.attackAt * .6 && p.troops > prey.troops * 1.2) { this.attack(p.id, prey.id, p.troops * .5, prey.lx, prey.ly); return; }
@@ -421,7 +421,7 @@ const War = {
       let best = 1e9;
       for (const q of this.players) {
         if (!q.alive || q === p || !A[p.id][q.id] || this.allied(p.id, q.id)) continue;
-        if (q === this.me && (this.t < Math.max(this.lvl.grace, (q.peak || 0) >= .02 ? 0 : 300) || this.attacks.filter(a => a.def === q.id && a.att !== p.id).length >= this.lvl.maxOnMe)) continue;
+        if (q === this.me && (this.t < this.lvl.grace || this.shielded(p))) continue;
         const dens = q.troops / Math.max(1, q.cells), mine = p.troops / Math.max(1, p.cells), score = dens / mine;
         if (score < best) { best = score; target = q.id; }
       }
@@ -433,6 +433,14 @@ const War = {
     const tq = target ? this.players[target - 1] : null;
     const tx = tq ? tq.lx : p.lx + (Math.random() - .5) * 200, ty = tq ? tq.ly : p.ly + (Math.random() - .5) * 200;
     this.attack(p.id, target, p.troops * (target ? .35 : .25), tx, ty);
+  },
+  // Schutz des Spielers vor zu vielen gleichzeitigen Angreifern. Zählt nur ernsthafte Angriffe (mind. 3 % des Truppen-Maximums
+  // des Angreifers), und wer das meiste Land hat, ist nie geschützt: der Führende soll gejagt werden.
+  shielded(p) {
+    const me = this.me; if (!me || !me.alive) return false;
+    if (this.players.every(q => !q.alive || q === me || q.cells <= me.cells)) return false;
+    const n = this.attacks.filter(a => a.def === me.id && a.att !== p.id && a.troops >= this.maxTroops(this.players[a.att - 1]) * .03).length;
+    return n >= this.lvl.maxOnMe;
   },
   randomOwnCell(p, border) {
     const M = this.map;
@@ -448,7 +456,7 @@ const War = {
   hire(p) {
     if (!p || !p.alive || this.over) return false;
     const cost = this.costOf(p, 'soeldner'), max = this.maxTroops(p), add = Math.min(Math.round(max * .2), Math.round(max - p.troops));
-    if ((p.merc || 0) >= MERC_MAX) { if (p === this.me) toast(`Keine Söldner mehr: höchstens ${MERC_MAX} pro Partie.`); return false; }
+    if ((p.merc || 0) >= MERC_MAX) { if (p === this.me) toast(`Alle ${MERC_MAX} Söldner dieser Partie sind angeworben. Mehr gibt es nicht.`); return false; }
     if (this.t - (p.mercT || -1e9) < MERC_PAUSE) { if (p === this.me) toast(`Söldner erst in ${Math.ceil(MERC_PAUSE - (this.t - p.mercT))} s wieder.`); return false; }
     if (p.gold < cost) { if (p === this.me) toast(`Zu wenig Gold für Söldner: ${fmtK(cost)} nötig.`); return false; }
     if (add < max * .05) { if (p === this.me) toast('Deine Truppen sind fast voll. Söldner lohnen sich erst, wenn Truppen fehlen.'); return false; }
@@ -486,7 +494,7 @@ const War = {
     clearTimeout(this._bt); this._bt = setTimeout(() => { el.hidden = true; }, 2600);
   },
   log(msg, cls) {
-    if (this.trace && this.trace.ev.length < 250) this.trace.ev.push([Math.round(this.t), msg]);
+    if (this.trace && this.trace.ev.length < 1500) this.trace.ev.push([Math.round(this.t), msg]);
     const el = $('#wFeed'); if (!el) return; const d = document.createElement('div'); d.textContent = msg; if (cls) d.className = cls; el.prepend(d);
     while (el.children.length > 4) el.lastChild.remove(); setTimeout(() => d.classList.add('old'), 6000);
   },
@@ -532,7 +540,8 @@ const War = {
   fit() { const M = this.map, top = 64, bot = this.W < 700 ? 150 : 100; this.minS = Math.min(this.W / M.w, (this.H - top - bot) / M.h) * .95; this.cam.s = this.minS; this.cam.x = M.w / 2; this.cam.y = M.h / 2 + (bot - top) / 2 / this.cam.s; },
   clampCam() { const M = this.map; this.cam.x = clamp(this.cam.x, 0, M.w); this.cam.y = clamp(this.cam.y, 0, M.h); },
   updateBuildBtns() {
-    document.querySelectorAll('#wBuild button').forEach(b => { const t = b.dataset.b, c = this.me ? this.costOf(this.me, t) : WAR_BUILD[t].cost; b.querySelector('small').textContent = fmtK(c) + ' Gold'; b.querySelector('em').textContent = WAR_BUILD[t].eff; b.setAttribute('aria-pressed', this.build === t); b.classList.toggle('poor', !this.me || this.me.gold < c); });
+    document.querySelectorAll('#wBuild button').forEach(b => { const t = b.dataset.b, c = this.me ? this.costOf(this.me, t) : WAR_BUILD[t].cost; b.querySelector('small').textContent = fmtK(c) + ' Gold'; b.querySelector('em').textContent = WAR_BUILD[t].eff; b.setAttribute('aria-pressed', this.build === t); b.classList.toggle('poor', !this.me || this.me.gold < c);
+      if (t === 'soeldner') { const left = Math.max(0, MERC_MAX - (this.me ? this.me.merc || 0 : 0)); b.dataset.left = left + '/' + MERC_MAX; if (!left) { b.querySelector('small').textContent = 'KEINE MEHR'; b.classList.add('poor'); } } });
     if (this.build && this.me && this.me.gold < this.costOf(this.me, this.build)) { this.build = null; document.querySelectorAll('#wBuild button').forEach(b => b.setAttribute('aria-pressed', false)); }
   },
   updateHud() {
