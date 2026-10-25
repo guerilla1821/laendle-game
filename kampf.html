@@ -52,6 +52,7 @@ img.spr{image-rendering:pixelated;image-rendering:crisp-edges;vertical-align:mid
 #panel h2{font-size:14px;color:var(--hi);margin:0 0 16px;font-weight:400}
 #panel h3{font-size:10px;color:var(--blue);margin:18px 0 6px;font-weight:400}
 #panel p{margin:0;font-size:9px;line-height:1.9}
+#panel a{color:var(--blue)}#panel .cr p{margin-bottom:8px}#panel .cr b{color:var(--hi);font-weight:400}
 .hs{width:100%;border-collapse:collapse;font-size:9px}
 .hs td,.hs th{padding:5px 4px;text-align:left;white-space:nowrap}.hs th{font-size:8px;color:var(--dim);font-weight:400}
 .hs td.n{color:var(--hi)}.hs td.s{text-align:right}
@@ -78,7 +79,7 @@ img.spr{image-rendering:pixelated;image-rendering:crisp-edges;vertical-align:mid
 #wScoreBox b{color:var(--hi)}
 .tbtn{border:0;background:var(--panel2);color:var(--text);height:26px;min-width:26px;padding:0 8px;font-size:10px;box-shadow:0 0 0 2px #000,0 0 0 4px var(--frame)}
 #w3d{margin-left:auto}
-#wBoard{position:absolute;top:70px;right:14px;padding:8px 10px;font-size:8px;min-width:230px;max-height:calc(100% - 210px);overflow:auto}
+#wBoard{position:absolute;top:calc(var(--th,58px) + 14px);right:14px;padding:8px 10px;font-size:8px;min-width:230px;max-height:calc(100% - var(--th,58px) - var(--bh,110px) - 30px);overflow:auto}
 #wBoard div{display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;white-space:nowrap}
 #wBoard i{width:8px;height:8px;flex:none}#wBoard em{font-style:normal;color:var(--dim);min-width:22px}
 #wBoard span{margin-left:auto}#wBoard .tr{min-width:44px;text-align:right;color:var(--dim)}
@@ -88,7 +89,7 @@ img.spr{image-rendering:pixelated;image-rendering:crisp-edges;vertical-align:mid
 #wBoard .pact{color:var(--good)}
 #wBoard .more{display:block;width:100%;border:0;background:none;color:var(--blue);font-size:8px;padding:8px 0 0;text-align:left}
 #wBoard .goal{color:var(--dim);border-top:2px solid var(--panel2);margin-top:6px;padding-top:6px;cursor:default}
-#wFeed{position:absolute;left:14px;top:70px;display:flex;flex-direction:column;gap:8px;pointer-events:none;max-width:min(400px,60%)}
+#wFeed{position:absolute;left:14px;top:calc(var(--th,58px) + 14px);display:flex;flex-direction:column;gap:8px;pointer-events:none;max-width:min(400px,60%)}
 #wFeed div{background:#000;color:var(--text);font-size:8px;line-height:1.8;padding:5px 8px;box-shadow:0 0 0 2px var(--panel2);transition:opacity 1s}
 #wFeed div.bad{box-shadow:0 0 0 2px var(--red);color:#ffb0c0}#wFeed div.good{box-shadow:0 0 0 2px var(--good)}#wFeed div.warn{box-shadow:0 0 0 2px var(--warn);color:#ffd890}#wFeed div.old{opacity:.35}
 #wFeed div.ask{background:var(--panel2);box-shadow:0 0 0 2px var(--hi);pointer-events:auto}
@@ -102,7 +103,7 @@ img.spr{image-rendering:pixelated;image-rendering:crisp-edges;vertical-align:mid
 #wBuild button span{font-size:8px}#wBuild button em{font-style:normal;font-size:7px;color:var(--dim);white-space:nowrap}#wBuild button small{font-size:8px;color:var(--hi)}
 #wBuild button[aria-pressed="true"]{background:var(--panel2);box-shadow:0 0 0 2px var(--hi)}#wBuild button:disabled{opacity:.35}
 #wTut{position:absolute;left:50%;transform:translateX(-50%);width:min(440px,calc(100% - 28px));padding:16px 16px 12px;z-index:6;background:#000;box-shadow:0 0 0 2px #000,0 0 0 4px var(--hi),0 0 0 6px #000}
-#wTut.top{top:70px}#wTut.bottom{bottom:120px}
+#wTut.top{top:calc(var(--th,58px) + 14px)}#wTut.bottom{bottom:calc(var(--bh,110px) + 14px)}#wTut{max-height:calc(100% - var(--th,58px) - var(--bh,110px) - 30px);overflow:auto}
 #wTut h3{margin:4px 34px 10px 0;font-size:11px;color:var(--hi);font-weight:400;line-height:1.6}
 #wTut p{margin:0 0 14px;font-size:9px;line-height:2}#wTut .tn{font-size:8px;color:var(--dim)}
 .tutHi{outline:2px solid var(--hi)!important;outline-offset:6px;position:relative;z-index:5;animation:hi .5s steps(1) infinite}
@@ -123,14 +124,23 @@ img.spr{image-rendering:pixelated;image-rendering:crisp-edges;vertical-align:mid
   #wHud img.spr{width:12px;height:12px}#wGrow{font-size:7px}
   .tbtn{min-width:24px;padding:0 6px}#wExit{order:-3}#wHelp{order:-2;margin-left:0}#w3d{order:-1;margin-left:0}#wScoreBox{margin-left:auto}
   #wBuild button em{display:none}
-  #wBoard{top:auto;bottom:132px;right:10px;min-width:0;padding:6px 8px;max-height:45%}
-  #wBoard.open{top:60px;bottom:auto;max-height:calc(100% - 210px);z-index:4}
-  #wFeed{top:auto;bottom:132px;left:10px;max-width:50%}#wFeed div{font-size:7px}#wFeed div:nth-child(n+3){display:none}
+  #wBoard{top:auto;bottom:calc(var(--bh,128px) + 14px);right:10px;min-width:0;padding:6px 8px;max-height:45%}
+  #wBoard.open{top:calc(var(--th,54px) + 14px);bottom:auto;max-height:calc(100% - var(--th,54px) - var(--bh,128px) - 30px);z-index:4}
+  #wFeed{top:auto;bottom:calc(var(--bh,128px) + 14px);left:10px;max-width:50%}#wFeed div{font-size:7px}#wFeed div:nth-child(n+3){display:none}
   #wBottom{left:10px;right:10px;transform:none;width:auto;flex-direction:column;align-items:stretch;gap:10px;bottom:10px}
   #wBuild button{flex:1;min-width:0}
-  #wTut.bottom{bottom:140px}#wTut.top{top:60px}#wTut{max-height:calc(100% - 220px);overflow:auto}
   #menu button.mi{font-size:9px}
   .hs{font-size:8px}.hs td,.hs th{padding:4px 2px}
+}
+@media(max-width:400px){#wHud{gap:5px}#wHud img.spr{width:10px;height:10px}#wHud .wst{font-size:7px}#wGrow{font-size:6px}}
+@media(max-height:520px){
+  #wTut,#wTut.top,#wTut.bottom{left:12px;transform:none;width:min(46%,420px);top:calc(var(--th,54px) + 14px);bottom:calc(var(--bh,90px) + 14px);max-height:none}
+  #titleTxt{width:50%;top:8%}#titleTxt .t2{font-size:22px}
+  #story{left:25%;width:46%;top:42%}
+  #menu{left:auto;right:4%;transform:translateY(-50%);top:50%;bottom:auto;width:min(340px,46%);padding:10px}
+  #menu button.mi{padding:6px 8px}#menu .foot{display:none}
+  #wBoard{max-height:calc(100% - var(--th,54px) - var(--bh,90px) - 30px)}
+  #wChoose{bottom:10px;padding:10px}
 }
 </style>
 </head>
@@ -143,6 +153,7 @@ img.spr{image-rendering:pixelated;image-rendering:crisp-edges;vertical-align:mid
     <button class="mi" data-m="new">NEUES SPIEL</button>
     <button class="mi" data-m="tut">ANLEITUNG</button>
     <button class="mi" data-m="hs">HIGHSCORE</button>
+    <button class="mi" data-m="credits">CREDITS</button>
     <button class="mi" data-m="snd">TON: AN</button>
     <button class="mi" data-m="home">ZURÜCK INS LÄNDLE</button>
     <div class="foot">ECHTE GEODATEN<br>11 GEMEINDEN - 1 SIEGER</div>

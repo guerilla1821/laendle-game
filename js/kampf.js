@@ -259,6 +259,22 @@ const Kampf = {
     else if (m === 'snd') { Snd.setOn(!Snd.on); Intro.sound = Snd.on; if (Snd.on) Snd.startMusic(); this.updSnd(); }
     else if (m === 'home') location.href = 'index.html';
     else if (m === 'hs') { this.panel(`<h2>HIGHSCORE</h2><div id="hsBox"><p>LADE...</p></div><div class="trow" style="margin-top:16px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`); HS.list().then(l => { const b = $('#hsBox'); if (b) b.innerHTML = HS.table(l); }); }
+    else if (m === 'credits') this.panel(`<h2>CREDITS</h2><div class="cr">
+      <h3>SPIEL</h3>
+      <p><b>IDEE UND SPIELDESIGN</b><br>Elias Batliner</p>
+      <p><b>PROGRAMMIERUNG, GRAFIK, MUSIK</b><br>Claude (Anthropic) im Auftrag von Elias Batliner</p>
+      <p><b>SPIELPRINZIP</b><br>inspiriert von <a href="https://openfront.io" target="_blank" rel="noopener">OpenFront</a></p>
+      <p><b>MUSIK</b><br>Marsch um Liechtenstein, eigene Komposition</p>
+      <p><b>SCHRIFT</b><br>Press Start 2P von CodeMan38, SIL Open Font License 1.1</p>
+      <p><b>3D-DARSTELLUNG</b><br><a href="https://threejs.org" target="_blank" rel="noopener">three.js</a>, MIT-Lizenz</p>
+      <h3>DATEN</h3>
+      <p><b>GEMEINDEGRENZEN, BODENBEDECKUNG, GEBÄUDE</b><br>Amtliche Vermessung, Amt für Tiefbau und Geoinformation, Liechtenstein</p>
+      <p><b>HÖHEN LIECHTENSTEIN</b><br>swissALTI3D © swisstopo</p>
+      <p><b>HÖHEN SCHWEIZ UND ÖSTERREICH</b><br>Copernicus DEM GLO-30 © DLR e.V. 2010-2014 und © Airbus Defence and Space GmbH 2014-2018, bereitgestellt durch das Copernicus-Programm der EU und ESA</p>
+      <p><b>HAUPTSTRASSEN</b><br>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap-Mitwirkende</a>, ODbL</p>
+      <p><b>EINWOHNER UND ARBEITSPLÄTZE</b><br>Bevölkerungs- und Arbeitsplatzdichte (Hektarraster), Amt für Statistik Liechtenstein</p>
+      <p><b>HIGHSCORE</b><br>gespeichert bei Supabase</p></div>
+      <div class="trow" style="margin-top:16px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`);
     else if (m === 'tut') this.panel(`<h2>ANLEITUNG</h2>${War.tutSteps().map(s => `<h3>${esc(s.t.toUpperCase())}</h3><p>${s.b}</p>`).join('')}<div class="trow" style="margin-top:16px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`);
   },
   panel(html) { const p = $('#panel'); p.innerHTML = html; p.hidden = false; $('#menu').hidden = true; $('#pClose').onclick = () => { Snd.play('tap'); this.closePanel(); }; },

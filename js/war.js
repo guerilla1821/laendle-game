@@ -80,7 +80,13 @@ const War = {
     };
     requestAnimationFrame(loop);
   },
-  resize() { if (!this.cv) return; const r = this.cv.getBoundingClientRect(); this.dpr = Math.min(devicePixelRatio || 1, 2); this.W = r.width; this.H = r.height; this.cv.width = r.width * this.dpr; this.cv.height = r.height * this.dpr; if (window.War3D && War3D.ok) War3D.resize(); },
+  resize() { if (!this.cv) return; const r = this.cv.getBoundingClientRect(); this.dpr = Math.min(devicePixelRatio || 1, 2); this.W = r.width; this.H = r.height; this.cv.width = r.width * this.dpr; this.cv.height = r.height * this.dpr; if (window.War3D && War3D.ok) War3D.resize(); this.layout(); },
+  // Abstände für Rangliste, Meldungen und Anleitung aus der echten Höhe von Kopf- und Fussleiste
+  layout() {
+    const r = document.documentElement.style, h = $('#wHud'), b = $('#wBottom');
+    if (h && !h.hidden) r.setProperty('--th', Math.round(h.getBoundingClientRect().bottom) + 'px');
+    if (b && !b.hidden) r.setProperty('--bh', Math.round(innerHeight - b.getBoundingClientRect().top) + 'px');
+  },
   is3D() { return this.cam.tilt > .02 || Math.abs(this.cam.yaw) > .02; },
   update3D() {
     if (this.is3D() && !War3D.ok && !War3D.init(this)) { this.cam.tilt = 0; this.cam.yaw = 0; toast('3D wird von diesem Gerät nicht unterstützt.'); }
@@ -209,7 +215,7 @@ const War = {
     const terr = p => cs[p.id] / Math.max(1, cn[p.id]), avgT = this.players.reduce((s, p) => s + terr(p), 0) / this.players.length;
     const avg = this.players.reduce((s, p) => s + this.maxTroops(p), 0) / this.players.length;
     this.factor = Math.round(clamp(Math.sqrt(avg / this.maxTroops(this.me)) * (terr(this.me) / avgT), 1, 3) * 10) / 10;
-    this.labels(); this.updateHud(); snd('start');
+    this.labels(); this.updateHud(); this.layout(); snd('start');
     if (!store.get('laendle-kampf-tut')) this.tutorial(0);
   },
 
@@ -518,7 +524,7 @@ const War = {
     ];
   },
   tutorial(k) {
-    const steps = this.tutSteps(), el = $('#wTut');
+    const steps = this.tutSteps(), el = $('#wTut'); this.layout();
     document.querySelectorAll('.tutHi').forEach(e => e.classList.remove('tutHi'));
     if (k >= steps.length) { el.hidden = true; store.set('laendle-kampf-tut', 1); this.halt.delete('tut'); return; }
     this.halt.add('tut');
@@ -528,6 +534,10 @@ const War = {
     // der Karte ausweichen: liegt das markierte Element unten, kommt die Karte nach oben und umgekehrt
     el.classList.remove('top', 'bottom');
     const r = t && t.getBoundingClientRect(); el.classList.add(r && r.top + r.height / 2 > innerHeight * .5 ? 'top' : 'bottom');
+    // darf das markierte Element nicht verdecken: notfalls Höhe begrenzen (Inhalt scrollt)
+    el.style.maxHeight = '';
+    if (r && innerHeight > 520) { const e = el.getBoundingClientRect(); if (e.top < r.bottom && r.top < e.bottom) el.style.maxHeight = Math.max(110, el.classList.contains('top') ? r.top - e.top - 16 : e.bottom - r.bottom - 16) + 'px'; }
+    el.scrollTop = 0;
     $('#tutNext').onclick = () => { snd('tap'); this.tutorial(k + 1); };
     $('#tutX').onclick = () => { snd('tap'); this.tutorial(steps.length); };
   },
