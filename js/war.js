@@ -3,11 +3,12 @@ const snd = n => { if (window.Snd) Snd.play(n); };
 /* Kampf um Liechtenstein: Gebietsstrategie nach dem Prinzip von OpenFront, vereinfacht.
    Raster 25 m (aus der Pipeline): Gemeinde, Boden, Höhe. Bevölkerung und Arbeitsplätze aus dem Hektarraster.
    11 Gemeinden, eine davon spielst du, die anderen sind Bots. Wer 70 % des Landes hält, gewinnt. */
-const WAR_COLORS = ['#000', '#d1495b', '#2e86ab', '#edae49', '#66a182', '#8e5cc4', '#e07a3f', '#3d5a80', '#c2477f', '#3fa7a3', '#9c6b30', '#5b8c2a'];
+// Farben nach der Palette der Retro-Konsole PICO-8
+const WAR_COLORS = ['#000', '#ff004d', '#29adff', '#ffec27', '#00e436', '#ff77a8', '#ffa300', '#83769c', '#ffccaa', '#ab5236', '#c2c3c7', '#fff1e8'];
 const WAR_BUILD = {
-  siedlung: { name: 'Siedlung', icon: '🏘️', cost: 220, eff: '+1500 Truppen-Max.', info: 'Erhöht dein Truppen-Maximum um 1500. Mehr Maximum heisst auch schnelleres Wachstum.' },
-  burg: { name: 'Burg', icon: '🏰', cost: 180, eff: 'Abwehr ×2, 300 m', info: 'Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen pro Feld. Bau sie an die Grenze zu starken Nachbarn.' },
-  markt: { name: 'Markt', icon: '💰', cost: 260, eff: '+6 Gold/s', info: 'Bringt 6 Gold pro Sekunde zusätzlich. Gold brauchst du nur für Gebäude.' },
+  siedlung: { name: 'Siedlung', cost: 220, eff: '+1500 Truppen-Max.', info: 'Erhöht dein Truppen-Maximum um 1500. Mehr Maximum heisst auch schnelleres Wachstum.' },
+  burg: { name: 'Burg', cost: 180, eff: 'Abwehr ×2, 300 m', info: 'Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen pro Feld. Bau sie an die Grenze zu starken Nachbarn.' },
+  markt: { name: 'Markt', cost: 260, eff: '+6 Gold/s', info: 'Bringt 6 Gold pro Sekunde zusätzlich. Gold brauchst du nur für Gebäude.' },
 };
 const WIN_SHARE = 0.7, PACT_TIME = 300, TRAITOR_TIME = 30;
 
@@ -19,7 +20,7 @@ const War = {
     this.init();
     $('#warScreen').hidden = false; this.resize();
     if (!this.map) {
-      $('#wMsg').textContent = 'Lade die Landeskarte …'; $('#wMsg').hidden = false;
+      $('#wMsg').textContent = 'Lade die Landeskarte...'; $('#wMsg').hidden = false;
       try { await this.loadMap(); } catch (e) { console.warn(e); $('#wMsg').innerHTML = `Die Kampfkarte ist noch nicht verfügbar. Sie entsteht beim nächsten Lauf der Geodaten-Pipeline.<br><button class="btn" id="wBack2">Zurück</button>`; $('#wBack2').onclick = () => this.exit(); return; }
     }
     this.choose();
@@ -90,17 +91,25 @@ const War = {
   },
   buildBase() {
     const M = this.map, cv = document.createElement('canvas'); cv.width = M.w; cv.height = M.h;
-    const g = cv.getContext('2d'), img = g.createImageData(M.w, M.h), d = img.data;
+    const g = cv.getContext('2d'), img = g.createImageData(M.w, M.h), d = img.data, w = M.w;
+    const hex = h => [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16));
+    // je Bodenart drei Töne: Schatten, normal, Licht
+    const P = {
+      wiese: ['#0f3a22', '#1d5e2e', '#2f7a34'], alp: ['#3b3a1e', '#55522a', '#6f6a38'], wald: ['#06200f', '#0e3418', '#184a22'],
+      fels: ['#3a3532', '#5f574f', '#7a7068'], schnee: ['#83769c', '#c2c3c7', '#fff1e8'], ort: ['#2a221e', '#3d322b', '#52443a'],
+      haus: ['#7e2553', '#ab5236', '#c8643c'], strasse: ['#5f574f', '#8a7a6a', '#a8988a'], wasser: ['#111d3d', '#1d2b53', '#29adff'],
+    };
+    for (const k in P) P[k] = P[k].map(hex);
+    const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
     for (let i = 0; i < M.N; i++) {
-      if (!M.gem[i]) continue; const cls = M.boden[i] & 15, hm = M.hoehe[i] || 500; let c;
-      if (cls === 4) c = [111, 166, 214];
-      else if (M.boden[i] & 32) c = [140, 132, 122];
-      else if (cls === 1) c = [196, 189, 178];
-      else if (cls === 3) c = hm > 1400 ? [88, 120, 80] : [93, 138, 74];
-      else if (cls === 5) c = hm > 2000 ? [236, 236, 236] : [201, 194, 181];
-      else c = hm > 1500 ? [170, 186, 140] : [184, 208, 138];
-      if (M.boden[i] & 16 && !(M.boden[i] & 32)) c = [222, 214, 196];
-      d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255;
+      if (!M.gem[i]) continue; const cls = M.boden[i] & 15, hm = M.hoehe[i] || 500;
+      const pal = cls === 4 ? P.wasser : M.boden[i] & 32 ? P.haus : M.boden[i] & 16 ? P.strasse : cls === 1 ? P.ort : cls === 3 ? P.wald : cls === 5 ? (hm > 2100 ? P.schnee : P.fels) : hm > 1500 ? P.alp : P.wiese;
+      // Licht von Nordwesten: Höhenunterschied zu den Nachbarn, gerastert wie auf alten Grafikchips
+      const x = i % w, y = (i / w) | 0, hn = M.hoehe[i - w] || hm, hw = M.hoehe[i - 1] || hm, hs = M.hoehe[i + w] || hm, he = M.hoehe[i + 1] || hm;
+      const sh = clamp(((hn - hs) + (hw - he)) / 40, -1, 1), th = (bayer[(y & 3) * 4 + (x & 3)] + .5) / 16;
+      let lvl = 1; if (sh > 0) lvl = sh > th ? 2 : 1; else if (sh < 0) lvl = -sh > th ? 0 : 1;
+      if (cls === 4) lvl = ((x + y * 3) % 7 === 0) ? 2 : 1;
+      const c = pal[lvl]; d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255;
     }
     g.putImageData(img, 0, 0); this.base = cv;
     this.ov = document.createElement('canvas'); this.ov.width = M.w; this.ov.height = M.h; this.ovCtx = this.ov.getContext('2d'); this.ovImg = this.ovCtx.createImageData(M.w, M.h);
@@ -364,10 +373,10 @@ const War = {
     let rows = open ? all : all.filter(p => p.alive).slice(0, 3); if (!open && !rows.includes(me)) rows = rows.concat([me]);
     const row = p => {
       const k = all.indexOf(p), pact = this.pacts.get(this.pk(me.id, p.id)), left = pact ? Math.max(0, Math.round(pact.until - this.t)) : 0;
-      const act = !open || p === me || !p.alive ? '' : pact ? `<button data-a="break" data-p="${p.id}" title="Bündnis brechen (du giltst ${TRAITOR_TIME} s als Verräter)">✖</button>` : this.refused[p.id] > this.t ? `<button disabled title="Abgelehnt, bald wieder möglich">🤝</button>` : `<button data-a="offer" data-p="${p.id}" title="Bündnis anbieten">🤝</button>`;
-      return `<div class="${p === me ? 'me' : ''}${p.alive ? '' : ' dead'}" data-f="${p.id}"><i style="background:${p.color}"></i><em>${k + 1}.</em> ${esc(p.name)}${pact ? ` <small class="pact" title="Bündnis, noch ${left} s">🤝${Math.ceil(left / 60)}′</small>` : ''}${p.traitorUntil > this.t ? ' <small class="trait" title="Verräter">⚠</small>' : ''}<span>${p.alive ? (p.cells / M.land * 100).toFixed(1) + ' %' : 'erobert'}</span>${open ? `<span class="tr">${p.alive ? fmtK(p.troops) : ''}</span>` : ''}${act}</div>`;
+      const act = !open || p === me || !p.alive ? '' : pact ? `<button data-a="break" data-p="${p.id}" title="Bündnis brechen (du giltst ${TRAITOR_TIME} s als Verräter)">${Spr.img('bruch', 1)}</button>` : this.refused[p.id] > this.t ? `<button disabled title="Abgelehnt, bald wieder möglich">${Spr.img('pakt', 1)}</button>` : `<button data-a="offer" data-p="${p.id}" title="Bündnis anbieten">${Spr.img('pakt', 1)}</button>`;
+      return `<div class="${p === me ? 'me' : ''}${p.alive ? '' : ' dead'}" data-f="${p.id}"><i style="background:${p.color}"></i><em>${k + 1}.</em> ${esc(p.name)}${pact ? ` <small class="pact" title="Bündnis, noch ${left} s">${Spr.img('pakt', 1)}${Math.ceil(left / 60)}M</small>` : ''}${p.traitorUntil > this.t ? ` ${Spr.img('warn', 1, 'Verräter')}` : ''}<span>${p.alive ? (p.cells / M.land * 100).toFixed(1) + ' %' : 'erobert'}</span>${open ? `<span class="tr">${p.alive ? fmtK(p.troops) : ''}</span>` : ''}${act}</div>`;
     };
-    const html = rows.map(row).join('') + `<button class="more" data-a="toggle">${open ? 'Weniger ▴' : `Alle ${all.length} Gemeinden ▾`}</button><div class="goal">Ziel: ${WIN_SHARE * 100} %</div>`;
+    const html = rows.map(row).join('') + `<button class="more" data-a="toggle">${open ? 'WENIGER' : `ALLE ${all.length} GEMEINDEN`}</button><div class="goal">ZIEL: ${WIN_SHARE * 100} %</div>`;
     const el = $('#wBoard'); el.classList.toggle('open', !!open); if (el._html === html) return; el._html = html; el.innerHTML = html;
     el.querySelectorAll('[data-a]').forEach(b => b.onclick = e => { e.stopPropagation(); const a = b.dataset.a, q = this.players[(+b.dataset.p || 1) - 1];
       if (a === 'toggle') this.boardOpen = !this.boardOpen; else if (a === 'offer') this.offer(me, q); else if (a === 'break') this.breakPact(me, q, true);
@@ -431,7 +440,7 @@ const War = {
   },
   ask(msg, label, fn) {
     const el = $('#wFeed'); const d = document.createElement('div'); d.className = 'ask';
-    d.innerHTML = `${esc(msg)} <button>${esc(label)}</button><button class="no">✕</button>`; el.prepend(d);
+    d.innerHTML = `${esc(msg)} <button>${esc(label)}</button><button class="no">X</button>`; el.prepend(d);
     const close = () => d.remove(); d.querySelector('button').onclick = () => { fn(); close(); }; d.querySelector('.no').onclick = close; setTimeout(close, 20000);
   },
 
@@ -444,7 +453,7 @@ const War = {
       { sel: '.wr', t: 'Angriffsstärke', b: 'So viel Prozent deiner Truppen schickt ein Tippen los. Nicht verbrauchte Truppen kehren zurück. Nachbarn kosten mehr, je dichter sie besetzt sind.' },
       { sel: '#wGoldBox', t: 'Gold', b: 'Gold kommt vor allem von den Arbeitsplätzen in deinem Gebiet. Du brauchst es nur für Gebäude.' },
       { sel: '#wBuild', t: 'Gebäude', b: 'SIEDLUNG: +1500 Truppen-Maximum, also schnelleres Wachstum.<br>BURG: Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen.<br>MARKT: +6 Gold pro Sekunde.<br>Jedes weitere Gebäude derselben Art wird teurer.' },
-      { sel: '#wBoard', t: 'Rangliste und Bündnisse', b: 'Die drei Führenden. Aufklappen zeigt alle Gemeinden. Mit 🤝 bietest du ein Bündnis an (5 Minuten). Verbündete greifen sich nicht an. Wer ein Bündnis bricht, gilt 30 s als Verräter.' },
+      { sel: '#wBoard', t: 'Rangliste und Bündnisse', b: 'Die drei Führenden. Aufklappen zeigt alle Gemeinden. Mit ' + Spr.img('pakt', 1) + ' bietest du ein Bündnis an (5 Minuten). Verbündete greifen sich nicht an. Wer ein Bündnis bricht, gilt 30 s als Verräter.' },
       { sel: '#wScoreBox', t: 'Punkte', b: 'Neutrales Feld 1 Punkt, feindliches Feld 3, Gebäude 50, ausgelöschte Gemeinde 5000, Sieg 50000 plus Zeitbonus. Schwache Startgemeinden zählen mehr (Faktor bis ×3).' },
       { sel: '#wHelp', t: 'Hilfe', b: 'Ziehen verschiebt die Karte, Mausrad oder zwei Finger zoomen. Während die Anleitung offen ist, ruht das Spiel. Mit ? kommt sie wieder.' },
     ];
@@ -456,7 +465,7 @@ const War = {
     this.halt.add('tut');
     const st = steps[k], t = st.sel && st.sel !== '#wc' ? $(st.sel) : null; if (t) t.classList.add('tutHi');
     el.hidden = false;
-    el.innerHTML = `<button class="px-x" id="tutX" aria-label="Anleitung schliessen">✕</button><div class="tn">${k + 1}/${steps.length}</div><h3>${esc(st.t)}</h3><p>${st.b}</p><div class="trow"><button class="px-btn" id="tutNext">${k === steps.length - 1 ? 'LOS!' : 'WEITER ▶'}</button></div>`;
+    el.innerHTML = `<button class="px-x" id="tutX" aria-label="Anleitung schliessen">X</button><div class="tn">${k + 1}/${steps.length}</div><h3>${esc(st.t)}</h3><p>${st.b}</p><div class="trow"><button class="px-btn" id="tutNext">${k === steps.length - 1 ? 'LOS!' : 'WEITER >'}</button></div>`;
     // der Karte ausweichen: liegt das markierte Element unten, kommt die Karte nach oben und umgekehrt
     el.classList.remove('top', 'bottom');
     const r = t && t.getBoundingClientRect(); el.classList.add(r && r.top + r.height / 2 > innerHeight * .5 ? 'top' : 'bottom');
@@ -472,51 +481,62 @@ const War = {
     if (!o) { d[i * 4 + 3] = 0; this.ovDirty = true; return; }
     const c = this.rgb(this.players[o - 1].color);
     let border = false; for (const n of this.neighbors(i)) if (this.owner[n] !== o) { border = true; break; }
-    d[i * 4] = border ? c[0] * .55 : c[0]; d[i * 4 + 1] = border ? c[1] * .55 : c[1]; d[i * 4 + 2] = border ? c[2] * .55 : c[2]; d[i * 4 + 3] = border ? 245 : 155;
+    const x = i % M.w, y = (i / M.w) | 0, on = border || ((x + y) & 1) === 0;
+    d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = border ? 255 : on ? 150 : 60;
     this.ovDirty = true;
   },
   fullRepaint() {
     const M = this.map, d = this.ovImg.data;
     if (this.phase === 'choose') {
       // Gemeindegrenzen als Vorschau
-      for (let i = 0; i < M.N; i++) { const g = M.gem[i]; if (!g) { d[i * 4 + 3] = 0; continue; } const c = this.rgb(WAR_COLORS[g]); let b = false; for (const n of this.neighbors(i)) if (M.gem[n] !== g) b = true; d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = b ? 230 : 70; }
+      for (let i = 0; i < M.N; i++) { const g = M.gem[i]; if (!g) { d[i * 4 + 3] = 0; continue; } const c = this.rgb(WAR_COLORS[g]); let b = false; for (const n of this.neighbors(i)) if (M.gem[n] !== g) b = true; d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = b ? 255 : (((i % M.w) + ((i / M.w) | 0)) & 1) ? 0 : 90; }
     } else for (let i = 0; i < M.N; i++) this.paint(i);
     this.ovDirty = true;
   },
   render() {
     const g = this.ctx, M = this.map; if (!M) return;
-    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); g.fillStyle = '#dfe6ea'; g.fillRect(0, 0, this.W, this.H);
+    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); g.fillStyle = '#000'; g.fillRect(0, 0, this.W, this.H);
     if (this.ovDirty) { this.ovCtx.putImageData(this.ovImg, 0, 0); this.ovDirty = false; }
     const [ox, oy] = this.g2s(0, 0), s = this.cam.s;
-    g.imageSmoothingEnabled = s < 2; g.drawImage(this.base, ox, oy, M.w * s, M.h * s);
     const R = this.relief;
     if (R && R.complete && R.naturalWidth) {
+      // Schweiz und Österreich nur als dunkles Relief
       const lx = (-622.276 - (M.x0 - O0[0])) / M.cell, ly = ((M.y1 - O0[1]) - 26477.241) / M.cell, k = 20.01346 / M.cell;
-      g.globalCompositeOperation = 'multiply'; g.globalAlpha = .6; g.imageSmoothingEnabled = true;
+      g.globalAlpha = .28; g.imageSmoothingEnabled = false;
       g.drawImage(R, ox + lx * s, oy + ly * s, R.naturalWidth * k * s, R.naturalHeight * k * s);
-      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+      g.globalAlpha = 1;
     }
-    g.imageSmoothingEnabled = false; g.drawImage(this.ov, ox, oy, M.w * s, M.h * s);
-    // Gebäude
+    g.imageSmoothingEnabled = false; g.drawImage(this.base, ox, oy, M.w * s, M.h * s);
+    g.drawImage(this.ov, ox, oy, M.w * s, M.h * s);
     g.textAlign = 'center'; g.textBaseline = 'middle';
+    const font = this.labelFont || 'monospace';
     if (this.phase === 'play') {
-      const fs = clamp(s * 5, 12, 26); g.font = `${fs}px system-ui`;
-      const big = s >= 2.2;
-      g.setLineDash([4, 4]); g.lineWidth = 1.5;
-      for (const b of this.buildings) if (b.type === 'burg' && b.owner === this.me.id) { const [x, y] = this.g2s(b.i % M.w + .5, Math.floor(b.i / M.w) + .5); g.strokeStyle = 'rgba(255,255,255,.8)'; g.beginPath(); g.arc(x, y, 12 * s, 0, 7); g.stroke(); }
+      g.setLineDash([2, 4]); g.lineWidth = 2;
+      for (const b of this.buildings) if (b.type === 'burg' && b.owner === this.me.id) { const [x, y] = this.g2s(b.i % M.w + .5, Math.floor(b.i / M.w) + .5); g.strokeStyle = '#fff1e8'; g.beginPath(); g.arc(Math.round(x), Math.round(y), 12 * s, 0, 7); g.stroke(); }
       g.setLineDash([]);
-      for (const b of this.buildings) { const [x, y] = this.g2s(b.i % M.w + .5, Math.floor(b.i / M.w) + .5); if (x < -30 || y < -30 || x > this.W + 30 || y > this.H + 30) continue; g.fillStyle = this.players[b.owner - 1].color; g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, big ? fs * .62 : 3.5, 0, 7); g.fill(); g.stroke(); if (big) g.fillText(WAR_BUILD[b.type].icon, x, y + 1); }
-      // Angriffspfeile des Spielers
-      for (const a of this.attacks) if (a.att === this.me.id || a.def === this.me.id) { const [x, y] = this.g2s(a.tx + .5, a.ty + .5); g.strokeStyle = a.att === this.me.id ? 'rgba(255,255,255,.9)' : 'rgba(207,66,55,.9)'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 9 + Math.sin(performance.now() / 200) * 2, 0, 7); g.stroke(); }
+      const sc = s >= 3 ? 3 : s >= 1.5 ? 2 : 1;
+      for (const b of this.buildings) {
+        const [x, y] = this.g2s(b.i % M.w + .5, Math.floor(b.i / M.w) + .5); if (x < -30 || y < -30 || x > this.W + 30 || y > this.H + 30) continue;
+        const sz = 8 * sc, X = Math.round(x - sz / 2), Y = Math.round(y - sz / 2);
+        g.fillStyle = '#000'; g.fillRect(X - 2, Y - 2, sz + 4, sz + 4); g.fillStyle = this.players[b.owner - 1].color; g.fillRect(X - 1, Y - 1, sz + 2, sz + 2);
+        g.fillStyle = '#000'; g.fillRect(X, Y, sz, sz); g.drawImage(Spr.canvas(b.type, sc), X, Y);
+      }
+      for (const a of this.attacks) if (a.att === this.me.id || a.def === this.me.id) {
+        const [x, y] = this.g2s(a.tx + .5, a.ty + .5), r = 8 + (Math.floor(performance.now() / 150) % 3) * 3;
+        g.strokeStyle = a.att === this.me.id ? '#fff1e8' : '#ff004d'; g.lineWidth = 2; g.strokeRect(Math.round(x - r), Math.round(y - r), r * 2, r * 2);
+      }
     }
-    // Namen und Truppen
+    const txt = (t, x, y, col) => { g.fillStyle = '#000'; for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [2, 2]]) g.fillText(t, x + dx, y + dy); g.fillStyle = col; g.fillText(t, x, y); };
     for (const p of this.players) {
       if (this.phase === 'play' && !p.alive) continue;
-      const [x, y] = this.g2s(p.lx + .5, p.ly + .5), size = this.phase === 'play' ? clamp(Math.sqrt(p.cells) * s * .22, 10, 30) : clamp(s * 9, 11, 22);
+      const [x0, y0] = this.g2s(p.lx + .5, p.ly + .5), x = Math.round(x0), y = Math.round(y0);
+      const area = p.cells * s * s, size = this.phase === 'play' ? (area > 60000 ? 16 : area > 6000 ? 10 : 8) : (s > 2.5 ? 10 : 8);
       if (x < -100 || y < -50 || x > this.W + 100 || y > this.H + 50) continue;
-      g.font = `${size}px ${this.labelFont || 'system-ui'}`; g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.85)'; g.fillStyle = '#18223a';
-      const nm = (this.phase === 'play' && p !== this.me && this.allied(p.id, this.me.id) ? '🤝 ' : '') + p.name; g.strokeText(nm, x, y); g.fillText(nm, x, y);
-      if (this.phase === 'play') { g.font = `${size * .8}px ${this.labelFont || 'system-ui'}`; g.strokeText(fmtK(p.troops), x, y + size); g.fillText(fmtK(p.troops), x, y + size); }
+      g.font = `${size}px ${font}`;
+      const name = p.name.toUpperCase(), ally = this.phase === 'play' && p !== this.me && this.allied(p.id, this.me.id);
+      txt(name, x, y, this.phase === 'play' && p === this.me ? '#ffec27' : '#fff1e8');
+      if (ally) { const w = g.measureText(name).width; g.drawImage(Spr.canvas('pakt', 2), Math.round(x - w / 2 - 22), y - 8); }
+      if (this.phase === 'play') { g.font = `8px ${font}`; txt(fmtK(p.troops), x, y + size + 6, p.color); }
     }
   },
 };

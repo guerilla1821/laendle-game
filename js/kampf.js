@@ -175,12 +175,39 @@ const Intro = {
 /* ======================= Highscore ======================= */
 const HS = {
   key: 'kampf-highscore',
-  list() { return store.get(this.key) || []; },
-  qualifies(s) { const l = this.list(); return s > 0 && (l.length < 10 || s > l[l.length - 1].s); },
-  add(e) { const l = this.list(); l.push(e); l.sort((a, b) => b.s - a.s); store.set(this.key, l.slice(0, 10)); return l.indexOf(e); },
-  table(hi) {
-    const l = this.list(); if (!l.length) return '<p>Noch keine Einträge. Sei der Erste!</p>';
-    return `<table class="hs"><tr><th>#</th><th>NAME</th><th>GEMEINDE</th><th></th><th style="text-align:right">PUNKTE</th></tr>${l.map((e, k) => `<tr class="${k === hi ? 'new' : ''}"><td>${k + 1}.</td><td class="n">${esc(e.n)}</td><td><i style="background:${esc(e.c)}"></i>${esc(e.g)}</td><td>${e.w ? '🏆' : ''}</td><td class="s">${e.s.toLocaleString('de-CH')}</td></tr>`).join('')}</table>`;
+  // Supabase (öffentliche Tabelle kampf_highscore); ohne Schlüssel oder offline: nur auf diesem Gerät
+  get remote() { return !!(CFG.supabaseUrl && CFG.supabaseKey); },
+  headers(extra) { const k = CFG.supabaseKey, h = { apikey: k, 'Content-Type': 'application/json' }; if (k.startsWith('eyJ')) h.Authorization = 'Bearer ' + k; return Object.assign(h, extra || {}); },
+  local() { return store.get(this.key) || []; },
+  async list() {
+    if (this.remote) {
+      try {
+        const r = await fetch(`${CFG.supabaseUrl}/rest/v1/kampf_highscore?select=id,name,gemeinde,score,win,minutes,created_at&order=score.desc,created_at.asc&limit=10`, { headers: this.headers() });
+        if (!r.ok) throw new Error(r.status);
+        this.online = true;
+        return (await r.json()).map(e => ({ id: e.id, n: e.name, g: e.gemeinde, s: e.score, w: e.win, m: e.minutes }));
+      } catch (e) { console.warn('Highscore offline', e); this.online = false; }
+    }
+    return this.local();
+  },
+  async add(e) {
+    const loc = this.local(); loc.push(e); loc.sort((a, b) => b.s - a.s); store.set(this.key, loc.slice(0, 10));
+    if (this.remote) {
+      try {
+        const r = await fetch(`${CFG.supabaseUrl}/rest/v1/kampf_highscore`, { method: 'POST', headers: this.headers({ Prefer: 'return=representation' }),
+          body: JSON.stringify({ name: e.n, gemeinde: e.g, score: e.s, win: !!e.w, minutes: Math.min(600, e.m || 0), land: Math.min(100, e.land || 0) }) });
+        if (!r.ok) throw new Error(r.status + ' ' + await r.text());
+        const row = (await r.json())[0]; e.id = row && row.id; return true;
+      } catch (err) { console.warn('Highscore nicht gespeichert', err); toast('Online-Highscore nicht erreichbar, lokal gespeichert.'); }
+    }
+    return false;
+  },
+  qualifies(list, s) { return s > 0 && (list.length < 10 || s > list[list.length - 1].s); },
+  color(g) { const i = ['Balzers', 'Eschen', 'Gamprin', 'Mauren', 'Planken', 'Ruggell', 'Schaan', 'Schellenberg', 'Triesen', 'Triesenberg', 'Vaduz'].indexOf(g); return WAR_COLORS[i + 1] || '#fff'; },
+  table(list, hi) {
+    const where = this.remote && this.online ? 'WELTWEIT' : 'NUR AUF DIESEM GERÄT';
+    if (!list.length) return `<p>NOCH KEINE EINTRÄGE. SEI DER ERSTE!</p><div class="hsinfo">${where}</div>`;
+    return `<table class="hs"><tr><th>#</th><th>NAME</th><th>GEMEINDE</th><th></th><th style="text-align:right">PUNKTE</th></tr>${list.map((e, k) => `<tr class="${hi && e === hi ? 'new' : ''}"><td>${k + 1}.</td><td class="n">${esc(e.n)}</td><td><i style="background:${this.color(e.g)}"></i><span>${esc(e.g.toUpperCase())}</span></td><td>${e.w ? Spr.img('pokal', 1, 'Sieg') : ''}</td><td class="s">${e.s.toLocaleString('de-CH')}</td></tr>`).join('')}</table><div class="hsinfo">${where}</div>`;
   },
 };
 
@@ -190,7 +217,8 @@ const Kampf = {
   boot() {
     Intro.init();
     const relief = new Image(); relief.src = 'data/relief.png'; window.KAMPF_RELIEF = relief;
-    War.labelFont = '"VT323", monospace';
+    War.labelFont = 'PressStart'; Spr.fill();
+    if (document.fonts && document.fonts.load) document.fonts.load('10px PressStart');
     this.ready = Tiles.init().then(ok => ok ? Density.load() : null);
     $('#press').onclick = () => this.intro();
     addEventListener('keydown', e => {
@@ -215,7 +243,7 @@ const Kampf = {
     const type = () => {
       if (this.skipped) return;
       if (li >= lines.length) { this.tm = setTimeout(skip, 1400); return; }
-      txt += lines[li][ci] || ''; ci++; $('#story').innerHTML = esc(txt).replace(/\n/g, '<br>') + '<span style="animation:blink .5s steps(1) infinite">█</span>';
+      txt += lines[li][ci] || ''; ci++; $('#story').innerHTML = esc(txt).replace(/\n/g, '<br>') + '<span style="animation:blink .5s steps(1) infinite">_</span>';
       if (lines[li][ci - 1] !== ' ') Snd.play('type');
       if (ci >= lines[li].length) { li++; ci = 0; txt += '\n'; this.tm = setTimeout(type, 650); } else this.tm = setTimeout(type, 70);
     };
@@ -230,37 +258,40 @@ const Kampf = {
     if (m === 'new') this.newGame();
     else if (m === 'snd') { Snd.setOn(!Snd.on); Intro.sound = Snd.on; if (Snd.on) Snd.startMusic(); this.updSnd(); }
     else if (m === 'home') location.href = 'index.html';
-    else if (m === 'hs') this.panel(`<h2>HIGHSCORE</h2>${HS.table(-1)}<div class="trow" style="margin-top:16px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`);
+    else if (m === 'hs') { this.panel(`<h2>HIGHSCORE</h2><div id="hsBox"><p>LADE...</p></div><div class="trow" style="margin-top:16px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`); HS.list().then(l => { const b = $('#hsBox'); if (b) b.innerHTML = HS.table(l); }); }
     else if (m === 'tut') this.panel(`<h2>ANLEITUNG</h2>${War.tutSteps().map(s => `<h3>${esc(s.t.toUpperCase())}</h3><p>${s.b}</p>`).join('')}<div class="trow" style="margin-top:16px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`);
   },
   panel(html) { const p = $('#panel'); p.innerHTML = html; p.hidden = false; $('#menu').hidden = true; $('#pClose').onclick = () => { Snd.play('tap'); this.closePanel(); }; },
   closePanel() { $('#panel').hidden = true; $('#menu').hidden = false; },
   async newGame() {
-    $('#menu').hidden = true; $('#story').textContent = 'LADE LANDESKARTE …';
+    $('#menu').hidden = true; $('#story').textContent = 'LADE LANDESKARTE...';
     await this.ready;
     Snd.stopMusic(); Intro.stop(); $('#intro').hidden = true; $('#story').textContent = '';
     War.open();
   },
   toMenu() { $('#modal').hidden = true; $('#intro').hidden = false; Intro.start(); Snd.startMusic(); this.showMenu(); },
-  endScreen(r) {
+  async endScreen(r) {
     const m = $('#modal'); m.hidden = false;
-    const q = HS.qualifies(r.total);
     const head = r.win ? `<h2 class="win">SIEG!<br>${esc(r.gem.toUpperCase())} HERRSCHT</h2>` : r.winner ? `<h2 class="lose">NIEDERLAGE<br>${esc(r.winner.name.toUpperCase())} HERRSCHT</h2>` : `<h2 class="lose">${esc(r.gem.toUpperCase())}<br>IST GEFALLEN</h2>`;
-    const body = `<div class="sc"><span>Land</span><b>${r.land} %</b><span>Zeit</span><b>${r.min} min</b><span>Eroberungen</span><b>${r.base.toLocaleString('de-CH')}</b>${r.bonus ? `<span>Siegbonus</span><b>${r.bonus.toLocaleString('de-CH')}</b>` : ''}<span>Gemeinde-Faktor</span><b>×${r.factor}</b><span class="tot">PUNKTE</span><b class="tot">${r.total.toLocaleString('de-CH')}</b></div>`;
-    const buttons = `<div class="trow"><button class="px-btn red" id="eAgain">NOCHMAL</button><button class="px-btn ghost" id="eMenu">MENÜ</button>${r.win ? '<button class="px-btn ghost" id="eCont">WEITERSPIELEN</button>' : ''}</div>`;
-    m.innerHTML = `<div class="mcard px">${head}${body}<div id="eHs">${q ? `<div class="ini">NEUER HIGHSCORE! NAME <input id="eName" maxlength="3" autocomplete="off" value="${esc(store.get('kampf-name') || '')}"><button class="px-btn" id="eSave">OK</button></div>` : HS.table(-1)}</div>${buttons}</div>`;
-    const bind = () => {
-      $('#eAgain').onclick = () => { Snd.play('tap'); m.hidden = true; War.choose(); };
-      $('#eMenu').onclick = () => { Snd.play('tap'); m.hidden = true; War.exit(); };
-      if (r.win) $('#eCont').onclick = () => { Snd.play('tap'); m.hidden = true; War.continueAfterWin(); };
+    const body = `<div class="sc"><span>LAND</span><b>${r.land} %</b><span>ZEIT</span><b>${r.min} MIN</b><span>EROBERUNGEN</span><b>${r.base.toLocaleString('de-CH')}</b>${r.bonus ? `<span>SIEGBONUS</span><b>${r.bonus.toLocaleString('de-CH')}</b>` : ''}<span>GEMEINDE-FAKTOR</span><b>X${r.factor}</b><span class="tot">PUNKTE</span><b class="tot">${r.total.toLocaleString('de-CH')}</b></div>`;
+    const buttons = `<div class="trow"><button class="px-btn red" id="eAgain">NOCHMAL</button><button class="px-btn" id="eMenu">MENÜ</button>${r.win ? '<button class="px-btn" id="eCont">WEITER</button>' : ''}</div>`;
+    m.innerHTML = `<div class="mcard px">${head}${body}<div id="eHs"><p>LADE HIGHSCORE...</p></div>${buttons}</div>`;
+    $('#eAgain').onclick = () => { Snd.play('tap'); m.hidden = true; War.choose(); };
+    $('#eMenu').onclick = () => { Snd.play('tap'); m.hidden = true; War.exit(); };
+    if (r.win) $('#eCont').onclick = () => { Snd.play('tap'); m.hidden = true; War.continueAfterWin(); };
+    const list = await HS.list(), box = $('#eHs'); if (!box) return;
+    if (!HS.qualifies(list, r.total)) { box.innerHTML = HS.table(list); return; }
+    box.innerHTML = `<div class="ini">NEUER HIGHSCORE! NAME <input id="eName" maxlength="3" autocomplete="off" value="${esc(store.get('kampf-name') || '')}"><button class="px-btn" id="eSave">OK</button></div>`;
+    const inp = $('#eName'); setTimeout(() => inp.focus(), 50);
+    const save = async () => {
+      const n = (inp.value || 'AAA').toUpperCase().replace(/[^A-ZÄÖÜ0-9]/g, '').slice(0, 3) || 'AAA'; store.set('kampf-name', n);
+      $('#eSave').disabled = true;
+      const e = { n, g: r.gem, s: r.total, w: r.win, m: r.min, land: r.land };
+      await HS.add(e); Snd.play('pact');
+      const fresh = await HS.list(), mine = fresh.find(x => (e.id && x.id === e.id) || (!e.id && x === e) || (!e.id && x.n === e.n && x.s === e.s)) || null;
+      box.innerHTML = HS.table(fresh, mine);
     };
-    bind();
-    if (q) {
-      const inp = $('#eName'); setTimeout(() => inp.focus(), 50);
-      const save = () => { const n = (inp.value || 'AAA').toUpperCase().replace(/[^A-ZÄÖÜ0-9]/g, '').slice(0, 3) || 'AAA'; store.set('kampf-name', n);
-        const e = { n, g: r.gem, c: r.color, s: r.total, w: r.win, m: r.min, d: new Date().toISOString().slice(0, 10) }; const k = HS.add(e); Snd.play('pact'); $('#eHs').innerHTML = HS.table(k); };
-      $('#eSave').onclick = save; inp.onkeydown = e => { if (e.key === 'Enter') save(); };
-    }
+    $('#eSave').onclick = save; inp.onkeydown = ev => { if (ev.key === 'Enter') save(); };
   },
 };
 addEventListener('DOMContentLoaded', () => Kampf.boot());
