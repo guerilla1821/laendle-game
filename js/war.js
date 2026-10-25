@@ -17,7 +17,7 @@ const WAR_LEVELS = {
   normal: { name: 'NORMAL', grow: 1, attackAt: .45, grace: 90, maxOnMe: 2, score: 1 },
   schwer: { name: 'SCHWER', grow: 1.12, attackAt: .38, grace: 30, maxOnMe: 4, score: 1.5 },
 };
-const WIN_SHARE = 0.7, PACT_TIME = 300, TRAITOR_TIME = 30;
+const COLLAPSE_SHARE = 0.01, WIN_SHARE = 0.7, PACT_TIME = 300, TRAITOR_TIME = 30;
 
 const War = {
   level: store.get('kampf-level') || 'normal', inited: false, map: null, phase: 'off', speed: 1, halt: new Set(), score: 0, ratio: .3, build: null, cam: { x: 0, y: 0, s: 1, tilt: 0, yaw: 0 },
@@ -231,7 +231,7 @@ const War = {
     this.owner.fill(0); this.buildings = []; this.attacks = []; this.feed = []; this.t = 0; this.build = null; this.over = false; this.score = 0; this.firstHit = false; this.pacts = new Map(); this.lastHit = {}; this.refused = {}; this.maxWarned = -999; this.nextOffer = 60;
     const R = 14;
     for (const p of this.players) {
-      p.cells = p.pers = p.jobs = 0; p.alive = true; p.gold = 120; p.traitorUntil = 0; p.merc = 0; p.growth = 0; p.goldRate = 0; p.nextAi = 20 + Math.random() * 20;
+      p.cells = p.pers = p.jobs = 0; p.alive = true; p.gold = 120; p.traitorUntil = 0; p.merc = 0; p.peak = 0; p.growth = 0; p.goldRate = 0; p.nextAi = 20 + Math.random() * 20;
       const sx = p.start % M.w, sy = Math.floor(p.start / M.w);
       for (let y = sy - R; y <= sy + R; y++) for (let x = sx - R; x <= sx + R; x++) {
         if (x < 0 || y < 0 || x >= M.w || y >= M.h || (x - sx) ** 2 + (y - sy) ** 2 > R * R) continue;
@@ -327,6 +327,19 @@ const War = {
     if (a.troops <= 0 || !a.cand.length) { att.troops += Math.max(0, a.troops); return false; }
     return true;
   },
+  // Zusammenbruch: das Restland geht an den stärksten Angreifer, sonst an den grössten Nachbarn
+  collapse(p) {
+    const A = this.adj, M = this.map, al = this.players.filter(q => q.alive && q !== p); if (!al.length) return;
+    let by = null, best = -1;
+    for (const a of this.attacks) if (a.def === p.id && a.troops > best) { best = a.troops; by = this.players[a.att - 1]; }
+    if (!by || !by.alive) { best = -1; for (const q of al) { const n = A && A[p.id] ? A[p.id][q.id] : 0; const sc = n ? q.cells + 1e9 : q.cells; if (sc > best) { best = sc; by = q; } } }
+    this.log(`${p.name} bricht zusammen.`, p === this.me ? 'bad' : '');
+    if (p === this.me) this.banner('ZUSAMMENBRUCH', '#ff004d');
+    for (let i = 0; i < M.N; i++) if (this.owner[i] === p.id) this.setOwner(i, by.id, true);
+    this.fullRepaint();
+    this.attacks = this.attacks.filter(a => a.def !== p.id);
+    this.eliminate(p, by);
+  },
   eliminate(p, by) {
     p.alive = false; p.troops = 0; this.attacks = this.attacks.filter(a => a.att !== p.id);
     for (const b of this.buildings) if (b.owner === p.id) b.owner = by.id;
@@ -351,6 +364,8 @@ const War = {
       // Aufholhilfe: Niemand fällt unter die Hälfte der durchschnittlichen Truppenstärke (Grundwert ohne Siedlungen)
       const al = this.players.filter(p => p.alive), raw = p => 800 + p.cells * 1.5 + p.pers * 6 + p.jobs * 2;
       this.troopFloor = Math.max(this.startFloor || 0, Math.round(.5 * al.reduce((s, p) => s + raw(p), 0) / Math.max(1, al.length)));
+      // Kleinstreste nicht künstlich weiterspielen: wer einmal über 2 % hatte und unter 1 % fällt, bricht zusammen (Gegner auch nach 5 Minuten unter 1 %)
+      for (const p of al) { const sh = p.cells / M.land; p.peak = Math.max(p.peak || 0, sh); if (!this.over && sh < COLLAPSE_SHARE && (p.peak >= .02 || (p.bot && this.t > 300))) this.collapse(p); }
     }
     for (const p of this.players) if (p.bot && p.alive && this.t >= p.nextAi) { this.botThink(p); p.nextAi = this.t + 1.2 + Math.random() * 2.2; }
     if (Math.floor(this.t * 10) % 10 === 0) { this.labels(); this.updateHud(); this.pactTick(); }
