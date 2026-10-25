@@ -311,7 +311,8 @@ const Kampf = {
       <h3>CHARAKTER</h3><p>${esc(g.character)}</p>
       <h3>STÄRKEN</h3>${li(g.strengths)}<h3>SCHWÄCHEN</h3>${li(g.weaknesses)}<h3>GEHEIMWAFFE</h3><p>${esc(g.secret)}</p>
       ${stats}<p class="gname">NAMENSPATIN/-PATE: ${esc(g.flur)}</p>
-      <div class="trow" style="margin-top:14px"><button class="px-btn red" id="gPlay">MIT ${esc(n.toUpperCase())} SPIELEN</button><button class="px-btn" id="gPrev">&lt;</button><button class="px-btn" id="gNext">&gt;</button><button class="px-btn" id="pClose">LISTE</button></div>`);
+      <div class="trow" style="margin-top:14px"><button class="px-btn red gplay" id="gPlay">MIT ${esc(n.toUpperCase())} SPIELEN</button></div>
+      <div class="trow gnav"><button class="px-btn" id="gPrev">&lt;</button><button class="px-btn" id="pClose">LISTE</button><button class="px-btn" id="gNext">&gt;</button></div>`);
     $('#panel').scrollTop = 0;
     $('#pClose').onclick = () => { Snd.play('tap'); this.gemList(); };
     $('#gPrev').onclick = () => { Snd.play('tap'); this.gemDetail((k + names.length - 1) % names.length, st, names); };
