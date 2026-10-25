@@ -567,17 +567,23 @@ const War = {
     return [
       { t: 'Kampf um Liechtenstein', b: `Du führst eine Gemeinde. Wer ${WIN_SHARE * 100} % des Landes hält, gewinnt. Die anderen zehn Gemeinden spielt der Computer.` },
       { sel: '#wTroopsBox', t: 'Truppen', b: 'Deine Truppen, dahinter das Maximum und das Wachstum pro Sekunde. Am schnellsten wachsen sie bei etwa der Hälfte des Maximums. AM MAXIMUM WÄCHST NICHTS MEHR: dann angreifen oder Land dazugewinnen.' },
-      { sel: '#wc', t: 'Ausbreiten', b: 'Tippe auf ungefärbtes Land neben deinem Gebiet. Talboden ist billig, Hang, Wald und Berge kosten viel mehr Truppen pro Feld. Hauptstrassen sind billig, Wasser geht nicht. Freies Land deiner eigenen Gemeinde kostet nur die Hälfte, fremdes mehr. Und daheim verteidigst du dich besser (Heimvorteil).' },
-      { sel: '.wr', t: 'Angriffsstärke', b: 'So viel Prozent deiner Truppen schickt ein Tippen los. Nicht verbrauchte Truppen kehren zurück. Nachbarn kosten mehr, je dichter sie besetzt sind.' },
       { sel: '#wGoldBox', t: 'Gold', b: 'Gold kommt vor allem von den Arbeitsplätzen in deinem Gebiet. Du brauchst es nur für Gebäude.' },
-      { sel: '#wBuild', t: 'Gebäude', b: 'SIEDLUNG: +1500 Truppen-Maximum, also schnelleres Wachstum.<br>BURG: Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen.<br>MARKT: +6 Gold pro Sekunde.<br>Jedes weitere Gebäude derselben Art wird teurer.' },
-      { sel: '#wBoard', t: 'Rangliste und Bündnisse', b: 'Die drei Führenden. Aufklappen zeigt alle Gemeinden. Mit ' + Spr.img('pakt', 1) + ' bietest du ein Bündnis an (5 Minuten). Verbündete greifen sich nicht an. Wer ein Bündnis bricht, gilt 30 s als Verräter.' },
       { sel: '#wScoreBox', t: 'Punkte', b: 'Neutrales Feld 1 Punkt, feindliches Feld 3, Gebäude 50, ausgelöschte Gemeinde 5000, Sieg 50000 plus Zeitbonus. Schwache Startgemeinden zählen mehr (Faktor bis ×3).' },
       { sel: '#w3d', t: 'Ansicht und Hilfe', b: 'Ziehen verschiebt die Karte, Mausrad oder zwei Finger zoomen. Zwei Finger gemeinsam hoch oder runter kippen die Karte in 3D, Drehen dreht sie. Am Computer mit der rechten Maustaste. Der Knopf 3D/2D schaltet um. Während die Anleitung offen ist, ruht das Spiel. Mit ? kommt sie wieder.' },
+      { sel: '#wBoard', t: 'Rangliste und Bündnisse', b: 'Die drei Führenden. Aufklappen zeigt alle Gemeinden. Mit ' + Spr.img('pakt', 1) + ' bietest du ein Bündnis an (5 Minuten). Verbündete greifen sich nicht an. Wer ein Bündnis bricht, gilt 30 s als Verräter.' },
+      { sel: '#wc', t: 'Ausbreiten', b: 'Tippe auf ungefärbtes Land neben deinem Gebiet. Talboden ist billig, Hang, Wald und Berge kosten viel mehr Truppen pro Feld. Hauptstrassen sind billig, Wasser geht nicht. Freies Land deiner eigenen Gemeinde kostet nur die Hälfte, fremdes mehr. Und daheim verteidigst du dich besser (Heimvorteil).' },
+      { sel: '.wr', t: 'Angriffsstärke', b: 'So viel Prozent deiner Truppen schickt ein Tippen los. Nicht verbrauchte Truppen kehren zurück. Nachbarn kosten mehr, je dichter sie besetzt sind.' },
+      { sel: '#wBuild', t: 'Gebäude', b: 'SIEDLUNG: +1500 Truppen-Maximum, also schnelleres Wachstum.<br>BURG: Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen.<br>MARKT: +6 Gold pro Sekunde.<br>Jedes weitere Gebäude derselben Art wird teurer.' },
     ];
   },
   tutorial(k) {
-    const steps = this.tutSteps(), el = $('#wTut'); this.layout();
+    const el = $('#wTut'); this.layout();
+    // Reihenfolge nach Bildschirmposition: oben von links nach rechts, dann Rangliste, dann Karte, dann unten
+    if (k === 0 || !this._tutSteps) {
+      const zone = st => { if (!st.sel) return [-1, 0]; if (st.sel === '#wBoard') return [1, 0]; if (st.sel === '#wc') return [2, 0]; const e = $(st.sel), r = e && e.getBoundingClientRect(); if (!r || !r.width) return [4, 0]; return [r.top + r.height / 2 < innerHeight * .4 ? 0 : 3, r.left]; };
+      this._tutSteps = this.tutSteps().map(st => ({ st, z: zone(st) })).sort((a, b) => a.z[0] - b.z[0] || a.z[1] - b.z[1]).map(x => x.st);
+    }
+    const steps = this._tutSteps;
     document.querySelectorAll('.tutHi').forEach(e => e.classList.remove('tutHi'));
     if (k >= steps.length) { el.hidden = true; store.set('laendle-kampf-tut', 1); this.halt.delete('tut'); return; }
     this.halt.add('tut');
