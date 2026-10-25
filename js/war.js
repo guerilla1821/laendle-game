@@ -32,6 +32,7 @@ const War = {
     this.choose();
   },
   exit() {
+    if (this.phase === 'play' && !this.over) this.upload('abgebrochen');
     this.phase = 'off'; this.halt.clear(); $('#warScreen').hidden = true; $('#wTut').hidden = true; if (this.onExit) this.onExit();
   },
   init() {
@@ -74,7 +75,7 @@ const War = {
     $('#w3d').onclick = () => { snd('tap'); if (this.is3D()) { this.cam.tilt = 0; this.cam.yaw = 0; } else { this.cam.tilt = .85; } this.update3D(); };
     c.addEventListener('wheel', e => { e.preventDefault(); this.zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * .0015)); }, { passive: false });
     $('#wExit').onclick = () => this.exit(); $('#wHelp').onclick = () => { snd('tap'); this.tutorial(0); };
-    document.addEventListener('visibilitychange', () => { if (document.hidden) this.halt.add('hidden'); else this.halt.delete('hidden'); });
+    document.addEventListener('visibilitychange', () => { if (document.hidden && this.phase === 'play') this.upload(this.over ? null : 'laufend'); if (document.hidden) this.halt.add('hidden'); else this.halt.delete('hidden'); });
     $('#wRatio').oninput = e => { this.ratio = e.target.value / 100; $('#wRatioV').textContent = e.target.value + ' %'; };
     document.querySelectorAll('#wBuild button').forEach(b => b.onclick = () => {
       const t = b.dataset.b;
@@ -243,6 +244,9 @@ const War = {
     this.log(`Du führst ${this.me.name}. Tippe auf neutrales Land, um dich auszubreiten.`);
     // Faktor: schwache Startgemeinden (wenig Truppen, steiles Gelände) geben mehr Punkte
     this.factor = this.gemStats()[gid - 1].factor;
+    this.trace = { v: 1, session: (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()), gemeinde: this.me.name, level: this.level || 'normal',
+      geraet: `${innerWidth}x${innerHeight}${matchMedia('(pointer:coarse)').matches ? ' touch' : ''}`, start: new Date().toISOString(),
+      spalten: 't, felder, truppen, max, gold, wachstum, angriffe_auf_mich, eigene_angriffe, gebaeude, top5 [id, felder, truppen]', snaps: [], ev: [] };
     this.labels(); this.updateHud(); this.layout(); snd('start');
     if (!store.get('laendle-kampf-tut')) this.tutorial(0);
   },
@@ -347,6 +351,10 @@ const War = {
     }
     for (const p of this.players) if (p.bot && p.alive && this.t >= p.nextAi) { this.botThink(p); p.nextAi = this.t + 1.2 + Math.random() * 2.2; }
     if (Math.floor(this.t * 10) % 10 === 0) { this.labels(); this.updateHud(); this.pactTick(); }
+    if (this.trace && Math.floor(this.t * 10) % 150 === 0) { const me = this.me;
+      this.trace.snaps.push([Math.round(this.t), me.cells, Math.round(me.troops), this.maxTroops(me), Math.round(me.gold), Math.round(me.growth || 0), this.attacks.filter(a => a.def === me.id).length, this.attacks.filter(a => a.att === me.id).length, this.buildings.filter(b => b.owner === me.id).length,
+        this.players.filter(p => p.alive).sort((a, b) => b.cells - a.cells).slice(0, 5).map(p => [p.id, p.cells, Math.round(p.troops)])]);
+      if (this.trace.snaps.length % 8 === 0) this.upload('laufend'); }
     if (!this.over && this.me.cells / M.land >= WIN_SHARE) this.end(true);
     if (!this.over) for (const p of this.players) if (p.bot && p.alive && p.cells / M.land >= WIN_SHARE) { this.end(false, p); break; }
     if (!this.over && this.me.alive && this.t > 30) {
@@ -420,15 +428,25 @@ const War = {
     this.over = true; this.halt.add('end');
     const land = Math.round(this.me.cells / this.map.land * 100), min = Math.max(1, Math.round(this.t / 60));
     const bonus = win ? 50000 + Math.max(0, Math.round((1500 - this.t) * 40)) : 0, total = Math.round((this.score + bonus) * this.factor * this.lvl.score);
-    snd(win ? 'win' : 'lose');
+    snd(win ? 'win' : 'lose'); this.upload(win ? 'sieg' : winner ? 'niederlage:' + winner.name : 'erobert', total);
     if (this.onEnd) this.onEnd({ win, winner, land, min, base: this.score, bonus, factor: this.factor, level: this.lvl, total, gem: this.me.name, color: this.me.color });
   },
   continueAfterWin() { this.halt.delete('end'); },
+  // Spielverlauf anonym an Supabase senden (Tabelle kampf_protokoll), damit sich die Balance auswerten lässt
+  upload(result, total) {
+    try {
+      const T = this.trace; if (!T || typeof HS === 'undefined' || !HS.remote) return;
+      if (result) T.result = result; if (total != null) T.punkte = total; T.minuten = Math.round(this.t / 60); T.land = Math.round(this.me.cells / this.map.land * 1000) / 10;
+      fetch(`${CFG.supabaseUrl}/rest/v1/kampf_protokoll`, { method: 'POST', keepalive: true, headers: HS.headers({ Prefer: 'return=minimal' }),
+        body: JSON.stringify({ session: T.session, gemeinde: T.gemeinde, level: T.level, result: T.result || 'laufend', minutes: Math.min(600, T.minuten), data: T }) }).catch(() => { });
+    } catch (e) { }
+  },
   banner(text, col) {
     const el = $('#wBanner'); if (!el) return; el.textContent = text; el.style.color = col || '#ffec27'; el.hidden = false; el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
     clearTimeout(this._bt); this._bt = setTimeout(() => { el.hidden = true; }, 2600);
   },
   log(msg, cls) {
+    if (this.trace && this.trace.ev.length < 250) this.trace.ev.push([Math.round(this.t), msg]);
     const el = $('#wFeed'); if (!el) return; const d = document.createElement('div'); d.textContent = msg; if (cls) d.className = cls; el.prepend(d);
     while (el.children.length > 4) el.lastChild.remove(); setTimeout(() => d.classList.add('old'), 6000);
   },
@@ -481,7 +499,7 @@ const War = {
     if (!this.me) return; const me = this.me, M = this.map, max = this.maxTroops(me), full = me.troops >= max * .97;
     $('#wName').textContent = me.name; $('#wName').style.color = me.color;
     $("#wTroops").textContent = `${fmtK(me.troops)}/${fmtK(max)}`;
-    const gr = (max * .006 + me.troops * .06) * Math.max(0, 1 - me.troops / max); $('#wGrow').textContent = full ? 'Maximum' : `+${fmtK(gr)}/s`; $('#wGrow').classList.toggle('full', full);
+    const gr = (max * .006 + me.troops * .06) * Math.max(0, 1 - me.troops / max); const drained = me.troops < max * .05 && this.attacks.some(a => a.def === me.id); $('#wGrow').textContent = drained ? 'ABWEHR!' : full ? 'Maximum' : `+${fmtK(gr)}/s`; $('#wGrow').classList.toggle('full', full || drained);
     if (full && me.alive && this.t - this.maxWarned > 90) { this.maxWarned = this.t; this.log('Truppen am Maximum: Es wachsen keine neuen nach. Greif an, erobere Land oder baue Siedlungen.', 'warn'); }
     $('#wGold').textContent = fmtK(me.gold); $('#wGoldR').textContent = `+${(me.goldRate || 0).toFixed(1)}/s`;
     $('#wLand').textContent = (me.cells / M.land * 100).toFixed(1) + ' %'; $('#wScore').textContent = Math.round(this.score * (this.factor || 1) * (this.lvl ? this.lvl.score : 1)).toLocaleString('de-CH');
@@ -494,7 +512,7 @@ const War = {
     let rows = open ? all : all.filter(p => p.alive).slice(0, 3); if (!open && !rows.includes(me)) rows = rows.concat([me]);
     const row = p => {
       const k = all.indexOf(p), pact = this.pacts.get(this.pk(me.id, p.id)), left = pact ? Math.max(0, Math.round(pact.until - this.t)) : 0;
-      const act = !open || p === me || !p.alive ? '' : pact ? `<button data-a="break" data-p="${p.id}" title="Bündnis brechen (du giltst ${TRAITOR_TIME} s als Verräter)">${Spr.img('bruch', 1)}</button>` : this.refused[p.id] > this.t ? `<button disabled title="Abgelehnt, bald wieder möglich">${Spr.img('pakt', 1)}</button>` : `<button data-a="offer" data-p="${p.id}" title="Bündnis anbieten">${Spr.img('pakt', 1)}</button>`;
+      const act = !open ? '' : p === me || !p.alive ? `<button class="ph" tabindex="-1" aria-hidden="true">${Spr.img('pakt', 1)}</button>` : pact ? `<button data-a="break" data-p="${p.id}" title="Bündnis brechen (du giltst ${TRAITOR_TIME} s als Verräter)">${Spr.img('bruch', 1)}</button>` : this.refused[p.id] > this.t ? `<button disabled title="Abgelehnt, bald wieder möglich">${Spr.img('pakt', 1)}</button>` : `<button data-a="offer" data-p="${p.id}" title="Bündnis anbieten">${Spr.img('pakt', 1)}</button>`;
       return `<div class="${p === me ? 'me' : ''}${p.alive ? '' : ' dead'}" data-f="${p.id}"><i style="background:${p.color}"></i><em>${k + 1}.</em> ${esc(p.name)}${pact ? ` <small class="pact" title="Bündnis, noch ${left} s">${Spr.img('pakt', 1)}${Math.ceil(left / 60)}M</small>` : ''}${p.traitorUntil > this.t ? ` ${Spr.img('warn', 1, 'Verräter')}` : ''}<span>${p.alive ? (p.cells / M.land * 100).toFixed(1) + ' %' : 'erobert'}</span>${open ? `<span class="tr">${p.alive ? fmtK(p.troops) : ''}</span>` : ''}${act}</div>`;
     };
     const html = rows.map(row).join('') + `<button class="more" data-a="toggle">${open ? 'WENIGER' : `ALLE ${all.length} GEMEINDEN`}</button><div class="goal">ZIEL: ${WIN_SHARE * 100} %</div>`;
