@@ -18,6 +18,7 @@ const Drive = {
   init() {
     if (this.inited) return; this.inited = true;
     const c = $('#dc');
+    this.touchDev = matchMedia('(pointer: coarse)').matches;
     const R = this.R = new THREE.WebGLRenderer({ canvas: c, antialias: true });
     R.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75)); R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFSoftShadowMap;
     this.scene = new THREE.Scene(); this.cam = new THREE.PerspectiveCamera(62, 1, .3, 5000);
@@ -30,7 +31,10 @@ const Drive = {
     this.player = this.makeCar(0xc41f3a, true); this.scene.add(this.player);
     this.headlight = new THREE.SpotLight(0xfff2cc, 0, 90, .5, .5, 1.2); this.headlight.position.set(0, 1, 1.5); this.player.add(this.headlight);
     this.headlight.target.position.set(0, 0, 30); this.player.add(this.headlight.target);
-    this.buildBackdrop();
+    // Umland (Schweiz, Österreich und das ferne Liechtenstein) in eigener Szene, wird zuerst gezeichnet
+    R.autoClear = false;
+    this.umScene = new THREE.Scene(); this.umScene.background = new THREE.Color(0xbcd3e3); this.umScene.fog = new THREE.Fog(0xbcd3e3, 300, 30000);
+    this.umCam = new THREE.PerspectiveCamera(62, 1, 5, 90000);
     addEventListener('resize', () => this.resize()); this.resize();
     addEventListener('keydown', e => { if (!this.active) return; if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
       this.keys[e.code] = true; if (e.code === 'KeyC') this.camMode = (this.camMode + 1) % 3; if (e.code === 'KeyR') this.resetToRoad(); if (e.code === 'KeyT') this.shiftTime(1); if (e.code === 'Escape') this.exit(); });
@@ -56,17 +60,43 @@ const Drive = {
     const loop = t => { const dt = Math.min(.05, (t - last) / 1000); last = t; if (this.active) this.frame(dt); requestAnimationFrame(loop); };
     requestAnimationFrame(loop);
   },
-  resize() { if (!this.R) return; this.R.setSize(innerWidth, innerHeight, false); this.cam.aspect = innerWidth / innerHeight; this.cam.fov = this.cam.aspect < 1 ? 80 : 62; this.cam.updateProjectionMatrix(); },
-  buildBackdrop() {
-    // ferne Berge rund um das Land (die echten Hänge in der Nähe kommen aus dem Gelände)
-    const g = new THREE.Group(), r = rng(7), cx = 5000, cy = 12000;
-    for (let k = 0; k < 40; k++) {
-      const a = k / 40 * Math.PI * 2, east = Math.sin(a) > 0, d = 17000 + r() * 6000, h = (east ? 1700 : 1300) + r() * 900;
-      const m = new THREE.Mesh(new THREE.ConeGeometry(3500 + r() * 2500, h, 6), new THREE.MeshBasicMaterial({ color: east ? 0x8c9fb0 : 0x97a8b6, fog: false }));
-      m.position.set(cx + Math.sin(a) * d, h / 2 + 300, -(cy + Math.cos(a) * d)); g.add(m);
-      if (h > 2200) { const cap = new THREE.Mesh(new THREE.ConeGeometry(900, h * .2, 6), new THREE.MeshBasicMaterial({ color: 0xf2f5f8, fog: false })); cap.position.set(m.position.x, h + 300 - h * .1, m.position.z); g.add(cap); }
-    }
-    this.backdrop = g; this.scene.add(g);
+  resize() {
+    if (!this.R) return; this.R.setSize(innerWidth, innerHeight, false);
+    for (const c of [this.cam, this.umCam]) { c.aspect = innerWidth / innerHeight; c.fov = c.aspect < 1 ? 80 : 62; c.updateProjectionMatrix(); }
+  },
+  // Umland aus dem 100-m-Höhenmodell (Copernicus) als Kulisse: Liechtenstein farbig nach Bodenart, Nachbarländer gedämpft
+  async loadUmland() {
+    if (this.umLoading) return; this.umLoading = true;
+    try {
+      const K = Tiles.index && Tiles.index.files && Tiles.index.files.kampf; if (!K || !K.umland) return;
+      const gunzip = async b => { const hd = new Uint8Array(b, 0, 2); return hd[0] === 0x1f && hd[1] === 0x8b ? await new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer() : b; };
+      const U = K.umland, ru = await fetch(CFG.dataBase + U.path); if (!ru.ok) return;
+      const H = new Uint16Array(await gunzip(await ru.arrayBuffer()));
+      let G = null, B = null;
+      try { const rk = await fetch(CFG.dataBase + K.path); if (rk.ok) { const kb = new Uint8Array(await gunzip(await rk.arrayBuffer())), N = K.w * K.h; G = kb.subarray(0, N); B = kb.subarray(N, 2 * N); } } catch (e) { /* ohne Landesmaske */ }
+      const S = this.touchDev ? 2 : 1, w0 = U.w, h0 = U.h, w = Math.ceil(w0 / S), hh = Math.ceil(h0 / S), n = w * hh, pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+      const hv = (i, j) => { i = clamp(i, 0, w0 - 1); j = clamp(j, 0, h0 - 1); return H[j * w0 + i] || 430; };
+      const hex = s => new THREE.Color(s), cls = { 1: hex('#b8b0a2'), 2: hex('#a6c47c'), 3: hex('#4f7440'), 4: hex('#5f9cc8'), 5: hex('#b3ab9c') };
+      const band = [[0, hex('#a3b981')], [650, hex('#6f8f55')], [1000, hex('#56764a')], [1700, hex('#8d9b74')], [2150, hex('#9d9a92')], [2450, hex('#eef1f4')]];
+      const haze = hex('#b9c6cf'), c = new THREE.Color(), Lx = -.45, Ly = .75, Lz = -.48;   // Licht von Nordwesten
+      for (let jj = 0; jj < hh; jj++) for (let ii = 0; ii < w; ii++) {
+        const i = Math.min(ii * S, w0 - 1), j = Math.min(jj * S, h0 - 1), k = jj * w + ii, X = U.x0 + (i + .5) * U.cell - O0[0], Y = U.y1 - (j + .5) * U.cell - O0[1], hm = hv(i, j);
+        pos[k * 3] = X; pos[k * 3 + 1] = hm - 8; pos[k * 3 + 2] = -Y;
+        // Bodenart und Landesmaske aus dem 25-m-Landesraster
+        let inside = false, bc = 0;
+        if (G) { const gx = Math.floor((X + O0[0] - K.x0) / K.cell), gy = Math.floor((K.y1 - (Y + O0[1])) / K.cell); if (gx >= 0 && gy >= 0 && gx < K.w && gy < K.h) { const q = gy * K.w + gx; inside = G[q] > 0; bc = B[q] & 15; } }
+        if (inside && cls[bc]) c.copy(cls[bc]); else { c.copy(band[0][1]); for (const [lim, cc] of band) if (hm >= lim) c.copy(cc); }
+        const dx = (hv(i + 1, j) - hv(i - 1, j)) / (2 * U.cell), dz = (hv(i, j + 1) - hv(i, j - 1)) / (2 * U.cell), nl = Math.hypot(dx, 1, dz);
+        const sh = clamp(.62 + .55 * ((-dx * Lx + Ly - dz * Lz) / nl - .55), .35, 1.15);
+        c.multiplyScalar(sh); if (!inside) c.lerp(haze, .38);
+        col[k * 3] = c.r; col[k * 3 + 1] = c.g; col[k * 3 + 2] = c.b;
+      }
+      const idx = new Uint32Array((w - 1) * (hh - 1) * 6); let o = 0;
+      for (let j = 0; j < hh - 1; j++) for (let i = 0; i < w - 1; i++) { const a = j * w + i, b = a + 1, d = a + w, e = d + 1; idx.set([a, d, b, b, d, e], o); o += 6; }
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      this.umMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+      this.umMesh = new THREE.Mesh(geo, this.umMat); this.umScene.add(this.umMesh); this.wxKey = null;
+    } catch (e) { console.warn('Umland', e); }
   },
 
   /* ---------- Start und Ende ---------- */
@@ -74,6 +104,7 @@ const Drive = {
     this.init();
     if (!Tiles.ok) { toast('Die Kartendaten sind gerade nicht erreichbar.'); return; }
     const b = DATA.b[bIdx];
+    this.loadUmland();
     $('#title').hidden = true; $('#mapScreen').hidden = true; $('#driveScreen').hidden = false; $('#loadOverlay').hidden = false;
     this.resize(); this.clearWorld();
     this.car = { x: b[0], y: b[1], hd: 0, v: 0, steer: 0, z: 0 };
@@ -123,13 +154,47 @@ const Drive = {
   hAt(x, y) { const ch = this.chunks.get(Tiles.idAt(x, y)); if (ch) return ch.h(x, y); const v = Tiles.hAt(x, y); return isNaN(v) ? (this.lastH || 450) : v; },
   buildChunk(t) {
     if (this.chunks.has(t.id)) return;
-    const [x0, y0] = this.chunkOrigin(t.id), h = this.heightFn(t.id), g = new THREE.Group();
+    const [x0, y0] = this.chunkOrigin(t.id), h0 = this.heightFn(t.id), g = new THREE.Group();
+    // Strassen vorbereiten: alle 4 m ein Punkt mit der Höhe der Mittellinie (Querschnitt bleibt waagrecht)
+    const roadLines = this.prepRoads(t, h0);
+    // Gelände: 4-m-Gitter (5 m auf Handys); unter und neben den Strassen wird es auf Strassenhöhe gelegt
+    const SEG = this.touchDev ? 200 : 250, N1 = SEG + 1, st = 1000 / SEG, NN = N1 * N1;
+    const base = new Float32Array(NN), surf = new Float32Array(NN), mesh = new Float32Array(NN), best = new Float32Array(NN).fill(1e9), rh = new Float32Array(NN);
+    for (let j = 0; j < N1; j++) for (let i = 0; i < N1; i++) base[j * N1 + i] = h0(x0 + i * st, y0 + 1000 - j * st);
+    const flat = lines => { for (const L of lines) {
+      if (L.bridge) continue; const R = L.ww + 5.5, p = L.pts;
+      for (let s = 0; s < p.length - 1; s++) {
+        const [ax, ay, ha] = p[s], [bx, by, hb] = p[s + 1], dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1;
+        const i0 = Math.max(0, Math.floor((Math.min(ax, bx) - R - x0) / st)), i1 = Math.min(SEG, Math.ceil((Math.max(ax, bx) + R - x0) / st));
+        const j0 = Math.max(0, Math.floor((y0 + 1000 - Math.max(ay, by) - R) / st)), j1 = Math.min(SEG, Math.ceil((y0 + 1000 - Math.min(ay, by) + R) / st));
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+          const px = x0 + i * st, py = y0 + 1000 - j * st, f = clamp(((px - ax) * dx + (py - ay) * dy) / l2, 0, 1), d = Math.hypot(px - ax - dx * f, py - ay - dy * f) - L.ww, q = j * N1 + i;
+          if (d < best[q]) { best[q] = d; rh[q] = ha + (hb - ha) * f; }
+        }
+      }
+    } };
+    flat(roadLines);
+    // Strassen der Nachbarkacheln, damit die Kachelränder zusammenpassen
+    { const [E, N] = t.id.split('-').map(Number); for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { if (!a && !b) continue; const nt = Tiles.cache.get(`${E + a}-${N + b}`); if (nt && nt.roads) flat(this.prepRoads(nt, h0)); } }
+    for (let q = 0; q < NN; q++) {
+      const d = best[q], wgt = d <= 1.2 ? 1 : d >= 5.5 ? 0 : (s => s * s * (3 - 2 * s))(1 - (d - 1.2) / 4.3);
+      surf[q] = base[q] + (rh[q] + .07 - base[q]) * wgt; mesh[q] = base[q] - .15 + (rh[q] - .3 - base[q] + .15) * wgt;
+    }
+    // Höhenfunktion der Kachel: Oberfläche inklusive Strassen (für Autos, Bäume, Schilder)
+    const h = (x, y) => {
+      const fx = clamp((x - x0) / st, 0, SEG - .001), fy = clamp((y0 + 1000 - y) / st, 0, SEG - .001), i = Math.floor(fx), j = Math.floor(fy), a = fx - i, b = fy - j, k = j * N1 + i;
+      return (surf[k] * (1 - a) + surf[k + 1] * a) * (1 - b) + (surf[k + N1] * (1 - a) + surf[k + N1 + 1] * a) * b;
+    };
     const ch = { id: t.id, g, h, edges: [], polys: [], cells: [], lights: [] };
-    // Gelände
-    const SEG = 125, geo = new THREE.PlaneGeometry(1000, 1000, SEG, SEG); geo.rotateX(-Math.PI / 2); geo.translate(x0 + 500, 0, -(y0 + 500));
-    const pos = geo.attributes.position;
-    for (let i = 0; i < pos.count; i++) pos.setY(i, h(pos.getX(i), -pos.getZ(i)) - .15);
-    geo.computeVertexNormals();
+    // Netz mit einem Randstreifen, der 3 m nach unten zeigt, damit an Kachelgrenzen keine Spalten sichtbar werden
+    const S2 = SEG + 2, geo = new THREE.PlaneGeometry(1, 1, S2, S2), pos = geo.attributes.position, uv = geo.attributes.uv, nor = geo.attributes.normal;
+    const mh = (i, j) => mesh[clamp(j, 0, SEG) * N1 + clamp(i, 0, SEG)];
+    for (let J = 0; J <= S2; J++) for (let I = 0; I <= S2; I++) {
+      const v = J * (S2 + 1) + I, i = clamp(I - 1, 0, SEG), j = clamp(J - 1, 0, SEG), edge = I === 0 || J === 0 || I === S2 || J === S2;
+      pos.setXYZ(v, x0 + i * st, mh(i, j) - (edge ? 3 : 0), -(y0 + 1000 - j * st)); uv.setXY(v, i / SEG, 1 - j / SEG);
+      const nx = -(mh(i + 1, j) - mh(i - 1, j)) / (2 * st), nz = -(mh(i, j + 1) - mh(i, j - 1)) / (2 * st), nl = Math.hypot(nx, 1, nz);
+      nor.setXYZ(v, nx / nl, 1 / nl, nz / nl);
+    }
     // Bodentextur
     const TS = 1024, cv = document.createElement('canvas'); cv.width = cv.height = TS; const c = cv.getContext('2d'), k = TS / 1000;
     const P = (x, y) => [(x - x0) * k, (y0 + 1000 - y) * k];
@@ -175,7 +240,7 @@ const Drive = {
     }
     if (parts.length) { const m = new THREE.Mesh(this.mergeColored(parts), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })); m.castShadow = m.receiveShadow = true; g.add(m); }
     // Strassen als eigene Bänder über dem Gelände (schärfer als die Bodentextur)
-    const rm = this.roadMesh(t, h); if (rm) g.add(rm);
+    const rm = this.roadMesh(roadLines); if (rm) g.add(rm);
     // Bäume
     const rr = rng(Number(t.id.replace('-', ''))), tp = [];
     for (const [x, y] of t.trees) tp.push([x, y, 1]);
@@ -199,35 +264,42 @@ const Drive = {
     this.world.add(g); this.chunks.set(t.id, ch);
     this.linkControls(ch);
   },
-  roadMesh(t, h) {
-    const P = [], C = [], asph = new THREE.Color(0x5a5e64), white = new THREE.Color(0xf2f2ee), yel = new THREE.Color(0xf0c419);
-    const strip = (l, off0, off1, y0, col, dash, hfn) => {
-      // gleichmässig neu abtasten (alle 4 m), dann seitlich versetzen
-      const pts = []; for (let k = 0; k < l.length - 2; k += 2) { const ax = l[k], ay = l[k + 1], bx = l[k + 2], by = l[k + 3], L = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.ceil(L / 4)); for (let i = 0; i < n; i++) pts.push([ax + (bx - ax) * i / n, ay + (by - ay) * i / n]); }
-      pts.push([l[l.length - 2], l[l.length - 1]]); if (pts.length < 2) return;
+  prepRoads(t, h) {
+    const out = [];
+    for (const r of t.roads) {
+      if (!CAR_HW.includes(r.hw) || (r.tunnel && r.tunnel !== 'no')) continue;
+      const w = HW_WIDTH[r.hw] || 3, ow = r.oneway === 'yes' || r.oneway === '1' || r.oneway === '-1', main = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'].includes(r.hw);
+      const ww = ow && !main ? w * .8 : w, bridge = !!(r.bridge && r.bridge !== 'no');
+      for (const l of r.lines) {
+        if (l.length < 4) continue;
+        const pts = []; for (let k = 0; k < l.length - 2; k += 2) { const ax = l[k], ay = l[k + 1], bx = l[k + 2], by = l[k + 3], L = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.ceil(L / 4)); for (let i = 0; i < n; i++) pts.push([ax + (bx - ax) * i / n, ay + (by - ay) * i / n]); }
+        pts.push([l[l.length - 2], l[l.length - 1]]); if (pts.length < 2) continue;
+        if (bridge) { const ha = h(pts[0][0], pts[0][1]), hb = h(pts[pts.length - 1][0], pts[pts.length - 1][1]); pts.forEach((q, i) => q.push(ha + (hb - ha) * i / (pts.length - 1) + .4)); }
+        else for (const q of pts) q.push(h(q[0], q[1]));
+        out.push({ pts, ww, main, ow, bridge, hw: r.hw });
+      }
+    }
+    return out;
+  },
+  roadMesh(lines) {
+    const P = [], C = [], asph = new THREE.Color(0x5a5e64), white = new THREE.Color(0xf2f2ee);
+    const strip = (pts, off0, off1, y0, col, dash) => {
       let run = 0;
       for (let i = 0; i < pts.length - 1; i++) {
-        const [ax, ay] = pts[i], [bx, by] = pts[i + 1], dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1, nx = dy / L, ny = -dx / L;
+        const [ax, ay, ha0] = pts[i], [bx, by, hb0] = pts[i + 1], dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1, nx = dy / L, ny = -dx / L;
         const seg0 = run; run += L;
         if (dash && ((seg0 % 9) > 3)) continue;
         const q = [[ax + nx * off0, ay + ny * off0], [ax + nx * off1, ay + ny * off1], [bx + nx * off1, by + ny * off1], [bx + nx * off0, by + ny * off0]];
-        const ha = hfn(ax, ay, i / (pts.length - 1)) + y0, hb = hfn(bx, by, (i + 1) / (pts.length - 1)) + y0;
+        const ha = ha0 + y0, hb = hb0 + y0;
         const v = [[q[0][0], ha, -q[0][1]], [q[1][0], ha, -q[1][1]], [q[2][0], hb, -q[2][1]], [q[3][0], hb, -q[3][1]]];
         for (const idx of [0, 2, 1, 0, 3, 2]) { P.push(...v[idx]); C.push(col.r, col.g, col.b); }
       }
     };
-    for (const r of t.roads) {
-      if (!CAR_HW.includes(r.hw) || (r.tunnel && r.tunnel !== 'no')) continue;
-      const w = HW_WIDTH[r.hw] || 3, ow = r.oneway === 'yes' || r.oneway === '1' || r.oneway === '-1', main = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'].includes(r.hw);
-      const ww = ow && !main ? w * .8 : w;
-      for (const l of r.lines) {
-        if (l.length < 4) continue;
-        const isBridge = r.bridge && r.bridge !== 'no', h0 = h(l[0], l[1]), h1 = h(l[l.length - 2], l[l.length - 1]);
-        const hfn = isBridge ? (x, y, f) => h0 + (h1 - h0) * f + .4 : (x, y) => h(x, y);
-        strip(l, -ww, ww, .07, asph, false, hfn);
-        if (main) { strip(l, ww - .45, ww - .3, .1, white, false, hfn); strip(l, -ww + .3, -ww + .45, .1, white, false, hfn); }
-        if (main && !ow) strip(l, -.08, .08, .11, r.hw === 'motorway' ? white : white, true, hfn);
-      }
+    for (const L of lines) {
+      const { pts, ww, main, ow } = L;
+      strip(pts, -ww, ww, .07, asph, false);
+      if (main) { strip(pts, ww - .45, ww - .3, .1, white, false); strip(pts, -ww + .3, -ww + .45, .1, white, false); }
+      if (main && !ow) strip(pts, -.08, .08, .11, white, true);
     }
     if (!P.length) return null;
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(C, 3)); geo.computeVertexNormals();
@@ -365,14 +437,38 @@ const Drive = {
   },
 
   /* ---------- Verkehr ---------- */
+  // Autoform: Seitenprofil extrudiert, mit Fase; Geometrien werden für alle Autos geteilt
+  carGeo() {
+    if (this._cg) return this._cg;
+    const shape = (pts, holes) => { const s = new THREE.Shape(); pts.forEach(([z, y], i) => i ? s.lineTo(z, y) : s.moveTo(z, y)); s.closePath(); return s; };
+    const ext = (sh, depth, bev) => { const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelSize: bev, bevelThickness: bev, bevelSegments: 3, curveSegments: 10 }); g.rotateY(-Math.PI / 2); g.translate(depth / 2, 0, 0); g.computeVertexNormals(); return g; };
+    // Unterteil mit Radläufen
+    const lower = new THREE.Shape(); lower.moveTo(-2.1, .36);
+    lower.lineTo(-1.8, .36); lower.absarc(-1.35, .36, .44, Math.PI, 0, true); lower.lineTo(.9, .36); lower.absarc(1.35, .36, .44, Math.PI, 0, true);
+    lower.lineTo(2.1, .36); lower.quadraticCurveTo(2.2, .38, 2.18, .62); lower.quadraticCurveTo(2.14, .78, 1.9, .82);
+    lower.lineTo(1.0, .92); lower.lineTo(-1.75, .96); lower.quadraticCurveTo(-2.12, .95, -2.14, .7); lower.quadraticCurveTo(-2.16, .4, -2.1, .36);
+    const cabin = shape([[1.0, .9], [.32, 1.36], [-1.08, 1.38], [-1.74, .94]]);
+    const roof = shape([[.28, 1.35], [-1.06, 1.37], [-1.1, 1.43], [.22, 1.42]]);
+    this._cg = {
+      body: ext(lower, 1.64, .08), cabin: ext(cabin, 1.5, .05), roof: ext(roof, 1.5, .04),
+      pillar: new THREE.BoxGeometry(1.62, .42, .1), bumper: new THREE.BoxGeometry(1.72, .16, .14),
+      wheel: new THREE.CylinderGeometry(.34, .34, .24, 20), hub: new THREE.CylinderGeometry(.19, .19, .25, 12),
+      lamp: new THREE.BoxGeometry(.34, .12, .05), mirror: new THREE.BoxGeometry(.16, .1, .2),
+      glass: new THREE.MeshPhongMaterial({ color: 0x1d2833, shininess: 90, specular: 0x667788 }), dark: new THREE.MeshLambertMaterial({ color: 0x24272b }),
+      tyre: new THREE.MeshLambertMaterial({ color: 0x141518 }), rim: new THREE.MeshLambertMaterial({ color: 0xb8bcc2 }), head: new THREE.MeshBasicMaterial({ color: 0xfff2c0 }),
+    };
+    return this._cg;
+  },
   makeCar(color, player) {
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, .7, 4.3), new THREE.MeshLambertMaterial({ color })); body.position.y = .62; body.castShadow = true; g.add(body);
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.62, .58, 2.2), new THREE.MeshLambertMaterial({ color: 0x27303a })); cab.position.set(0, 1.24, -.25); cab.castShadow = true; g.add(cab);
-    const wm = new THREE.MeshLambertMaterial({ color: 0x15171a });
-    for (const [x, z] of [[-.85, 1.35], [.85, 1.35], [-.85, -1.35], [.85, -1.35]]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(.34, .34, .25, 12), wm); w.rotation.z = Math.PI / 2; w.position.set(x, .34, z); g.add(w); }
-    const hl = new THREE.MeshBasicMaterial({ color: 0xfff2c0 }), tl = new THREE.MeshBasicMaterial({ color: 0x8a1018 });
-    for (const x of [-.6, .6]) { const a = new THREE.Mesh(new THREE.BoxGeometry(.32, .14, .04), hl); a.position.set(x, .7, 2.16); g.add(a); const b = new THREE.Mesh(new THREE.BoxGeometry(.32, .14, .04), tl); b.position.set(x, .7, -2.16); g.add(b); }
+    const G = this.carGeo(), g = new THREE.Group(), paint = new THREE.MeshPhongMaterial({ color, shininess: 60, specular: 0x333333 });
+    const add = (geo, mat, x, y, z, sh) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); if (sh) m.castShadow = true; g.add(m); return m; };
+    const body = add(G.body, paint, 0, 0, 0, true); add(G.cabin, G.glass, 0, 0, 0, true); add(G.roof, paint, 0, 0, 0, false);
+    add(G.pillar, paint, 0, 1.15, -.42, false);
+    add(G.bumper, G.dark, 0, .42, 2.2); add(G.bumper, G.dark, 0, .42, -2.18);
+    for (const [x, z] of [[-.84, 1.35], [.84, 1.35], [-.84, -1.35], [.84, -1.35]]) { const w = add(G.wheel, G.tyre, x, .34, z); w.rotation.z = Math.PI / 2; const hb = add(G.hub, G.rim, x * 1.01, .34, z); hb.rotation.z = Math.PI / 2; }
+    for (const x of [-.95, .95]) add(G.mirror, paint, x, 1.0, .8);
+    const tl = new THREE.MeshBasicMaterial({ color: 0x8a1018 });
+    for (const x of [-.6, .6]) { add(G.lamp, G.head, x, .7, 2.2); add(G.lamp, tl, x, .76, -2.17); }
     g.userData.tail = tl; g.userData.body = body;
     return g;
   },
@@ -493,6 +589,17 @@ const Drive = {
     }
     return false;
   },
+  // Trennachsen-Test zweier Autos (halbe Breite .9 m, halbe Länge 2.2 m); liefert Überlappung und Richtung von a nach b
+  boxHit(ax, ay, ahd, bx, by, bhd, hw = .9, hl = 2.2) {
+    const dx = bx - ax, dy = by - ay, ext = (hd, nx, ny) => hw * Math.abs(Math.cos(hd) * nx - Math.sin(hd) * ny) + hl * Math.abs(Math.sin(hd) * nx + Math.cos(hd) * ny);
+    let best = 1e9, n = null;
+    for (const hd of [ahd, bhd]) for (const [nx, ny] of [[Math.cos(hd), -Math.sin(hd)], [Math.sin(hd), Math.cos(hd)]]) {
+      const pr = dx * nx + dy * ny, ov = ext(ahd, nx, ny) + ext(bhd, nx, ny) - Math.abs(pr);
+      if (ov <= 0) return null;
+      if (ov < best) { best = ov; const sg = pr < 0 ? -1 : 1; n = [nx * sg, ny * sg]; }
+    }
+    return { ov: best, n };
+  },
   updatePlayer(dt) {
     const k = this.keys, t = this.touch, C = this.car;
     const thr = (k.ArrowUp || k.KeyW) ? 1 : Math.max(0, t.y), brk = (k.ArrowDown || k.KeyS) ? 1 : Math.max(0, -t.y), hb = k.Space ? 1 : 0;
@@ -515,9 +622,14 @@ const Drive = {
     const nhd = C.hd + yawRate * dt, nx = C.x + Math.sin(nhd) * C.v * dt, ny = C.y + Math.cos(nhd) * C.v * dt;
     if (this.collides(nx, ny, nhd)) { C.v = -C.v * .25; if (!this.bumpT || performance.now() - this.bumpT > 1500) { this.bumpT = performance.now(); toast('Rums! Gebäude gestreift.'); } }
     else { C.x = nx; C.y = ny; C.hd = nhd; }
-    for (const a of this.ai) { const dx = C.x - a.x, dy = C.y - a.y, d = Math.hypot(dx, dy); if (d < 3.3) {
-      const push = (3.3 - d) / (d || 1); C.x += dx * push; C.y += dy * push; C.v *= -.3; a.v = 0;
-      if (!this.crashT || performance.now() - this.crashT > 2000) { this.crashT = performance.now(); toast('Zusammenstoss! Vorsicht im Verkehr.'); } } }
+    // Zusammenstoss nur, wenn sich die Umrisse der Autos wirklich überschneiden (gedrehte Rechtecke)
+    for (const a of this.ai) {
+      if (Math.abs(C.x - a.x) > 6 || Math.abs(C.y - a.y) > 6) continue;
+      const hit = this.boxHit(a.x, a.y, a.hd, C.x, C.y, C.hd); if (!hit) continue;
+      const rel = Math.hypot(Math.sin(C.hd) * C.v - Math.sin(a.hd) * a.v, Math.cos(C.hd) * C.v - Math.cos(a.hd) * a.v);
+      C.x += hit.n[0] * (hit.ov + .05); C.y += hit.n[1] * (hit.ov + .05); C.v *= rel > 2 ? -.3 : .5; a.v = 0;
+      if (rel > 2 && (!this.crashT || performance.now() - this.crashT > 2500)) { this.crashT = performance.now(); toast('Zusammenstoss! Vorsicht im Verkehr.'); }
+    }
     const h = this.hAt(C.x, C.y); this.lastH = h;
     const hl = this.hAt(C.x - Math.cos(C.hd) * 1, C.y + Math.sin(C.hd) * 1), hr = this.hAt(C.x + Math.cos(C.hd) * 1, C.y - Math.sin(C.hd) * 1);
     const m = this.player; m.position.set(C.x, h, -C.y);
@@ -553,8 +665,11 @@ const Drive = {
     const sky = new THREE.Color(0x0c1426).lerp(new THREE.Color(0xa7cbe6).lerp(new THREE.Color(0xaeb6bf), clamp(cloud * 1.1, 0, 1)), dayF);
     if (sun.alt > -6 && sun.alt < 9) sky.lerp(new THREE.Color(0xe9a37a), .32 * (1 - cloud) * (1 - Math.abs(sun.alt - 1) / 9));
     if (wx && wx.precip > .2) sky.lerp(new THREE.Color(0x7d858e), clamp(wx.precip / 4, 0, .5) * dayF);
-    this.scene.background = sky; this.scene.fog.color.copy(sky);
-    const vis = wx ? clamp(wx.vis, 200, 3000) : 1500; this.scene.fog.far = Math.min(1500, vis); this.scene.fog.near = this.scene.fog.far * .25;
+    // Himmel in der Umland-Szene (wird zuerst gezeichnet), Nebel in beiden Szenen gleich, damit der Übergang nicht auffällt
+    this.umScene.background = sky; this.scene.background = null; this.scene.fog.color.copy(sky); this.umScene.fog.color.copy(sky);
+    const vis = wx ? clamp(wx.vis, 250, 40000) : 20000;
+    if (this.umMesh) { const F = this.scene.fog, U = this.umScene.fog; U.far = vis; U.near = Math.min(300, vis * .1); F.near = U.near; F.far = U.far; this.umMat.color.setScalar(clamp(this.hemi.intensity * 1.25 + this.sun.intensity * .55, .1, 1)); }
+    else { this.scene.fog.far = Math.min(1500, vis); this.scene.fog.near = this.scene.fog.far * .25; }
     this.headlight.intensity = dayF < .35 ? 2.2 : 0;
     this.night = dayF < .35;
     this.updatePrecip(wx);
@@ -627,6 +742,7 @@ const Drive = {
     this.updateCamera(dt);
     this.hudT = (this.hudT || 0) - dt; if (this.hudT <= 0) { this.hudT = .2; this.updateLight(); this.updateHud(); }
     this.tickPrecip(dt);
-    this.R.render(this.scene, this.cam);
+    const R = this.R; this.umCam.position.copy(this.cam.position); this.umCam.quaternion.copy(this.cam.quaternion);
+    R.clear(); R.render(this.umScene, this.umCam); R.clearDepth(); R.render(this.scene, this.cam);
   },
 };
