@@ -263,6 +263,7 @@ const Kampf = {
   updSnd() { $('#menu [data-m="snd"]').textContent = 'TON: ' + (Snd.on ? 'AN' : 'AUS'); },
   action(m) {
     if (m === 'new') this.newGame();
+    else if (m === 'gem') this.gemList();
     else if (m === 'snd') { Snd.setOn(!Snd.on); Intro.sound = Snd.on; if (Snd.on) Snd.startMusic(); this.updSnd(); }
     else if (m === 'home') location.href = 'index.html';
     else if (m === 'hs') { this.panel(`<h2>HIGHSCORE</h2><div id="hsBox"><p>LADE...</p></div><div class="trow" style="margin-top:16px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`); HS.list().then(l => { const b = $('#hsBox'); if (b) b.innerHTML = HS.table(l); }); }
@@ -282,13 +283,48 @@ const Kampf = {
       <div class="trow" style="margin-top:16px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`);
     else if (m === 'tut') this.panel(`<h2>ANLEITUNG</h2>${War.tutSteps().map(s => `<h3>${esc(s.t.toUpperCase())}</h3><p>${s.b}</p>`).join('')}<div class="trow" style="margin-top:16px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`);
   },
+  /* ---------- DIE GEMEINDEN: Oberhäupter, Stärken, Schwächen ---------- */
+  async gemData() {
+    await this.ready; if (!War.map) { try { await War.loadMap(); } catch (e) { return null; } }
+    return War.gemStats();
+  },
+  async gemList() {
+    this.panel('<h2>DIE GEMEINDEN</h2><p>LADE...</p><div class="trow"><button class="px-btn" id="pClose">ZURÜCK</button></div>');
+    const st = await this.gemData(); if ($('#panel').hidden) return;
+    const names = st ? st.map(q => q.name) : Object.keys(GEM_INFO).sort();
+    this.panel(`<h2>DIE GEMEINDEN</h2><p class="gsub">Wen willst du anführen? Tippe auf ein Oberhaupt.</p><div class="ggrid">${names.map((n, k) => { const g = GEM_INFO[n]; return `<button class="gcard" data-k="${k}" style="--c:${WAR_COLORS[k + 1]}">${Spr.portraitImg(g.avatar, 2, g.leader)}<span class="gn">${esc(n.toUpperCase())}</span><span class="gl">${esc(g.short)}</span></button>`; }).join('')}</div><div class="trow" style="margin-top:14px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`);
+    $('#panel').querySelectorAll('.gcard').forEach(b => b.onclick = () => { Snd.play('tap'); this.gemDetail(+b.dataset.k, st, names); });
+  },
+  gemDetail(k, st, names) {
+    const n = names[k], g = GEM_INFO[n], q = st && st[k], col = WAR_COLORS[k + 1];
+    const max = f => Math.max(...st.map(f)), bar = (v, m) => { const b = Math.max(1, Math.round(v / m * 5)); return `<span class="bar">${'<i class="on"></i>'.repeat(b)}${'<i></i>'.repeat(5 - b)}</span>`; };
+    const stats = q ? `<h3>DAS SAGEN DIE ZAHLEN</h3><div class="gst">
+      <span>TRUPPEN AM START</span>${bar(q.startMax, max(x => x.startMax))}<b>${fmtK(q.startMax)}</b>
+      <span>WIRTSCHAFT (GOLD)</span>${bar(q.jobs, max(x => x.jobs))}<b>${fmtK(q.jobs)} JOBS</b>
+      <span>EINWOHNER</span>${bar(q.pers, max(x => x.pers))}<b>${fmtK(q.pers)}</b>
+      <span>FLÄCHE</span>${bar(q.cells, max(x => x.cells))}<b>${(q.cells * War.map.cell * War.map.cell / 1e6).toFixed(1)} KM²</b>
+      <span>GELÄNDE (STEILHEIT)</span>${bar(q.cost, max(x => x.cost))}<b>X${q.cost.toFixed(1)}</b>
+      <span>ÜBER 1200 M</span>${bar(q.alp / q.cells, max(x => x.alp / x.cells))}<b>${Math.round(q.alp / q.cells * 100)} %</b>
+      <span>PUNKTEFAKTOR</span>${bar(q.factor, 3)}<b>X${q.factor}</b></div>` : '';
+    const li = a => `<ul>${a.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
+    this.panel(`<div class="ghead">${Spr.portraitImg(g.avatar, 5, g.leader)}<div><div class="gn" style="color:${col}">${esc(n.toUpperCase())}</div><h2>${esc(g.leader)}</h2><div class="gt">${esc(g.title)}</div><p class="gq">«${esc(g.quote)}»</p></div></div>
+      <h3>CHARAKTER</h3><p>${esc(g.character)}</p>
+      <h3>STÄRKEN</h3>${li(g.strengths)}<h3>SCHWÄCHEN</h3>${li(g.weaknesses)}<h3>GEHEIMWAFFE</h3><p>${esc(g.secret)}</p>
+      ${stats}<h3>FAKTEN</h3>${li(g.facts)}<p class="gname">NAMENSPATIN/-PATE: ${esc(g.flur)}</p>
+      <div class="trow" style="margin-top:14px"><button class="px-btn red" id="gPlay">MIT ${esc(n.toUpperCase())} SPIELEN</button><button class="px-btn" id="gPrev">&lt;</button><button class="px-btn" id="gNext">&gt;</button><button class="px-btn" id="pClose">LISTE</button></div>`);
+    $('#panel').scrollTop = 0;
+    $('#pClose').onclick = () => { Snd.play('tap'); this.gemList(); };
+    $('#gPrev').onclick = () => { Snd.play('tap'); this.gemDetail((k + names.length - 1) % names.length, st, names); };
+    $('#gNext').onclick = () => { Snd.play('tap'); this.gemDetail((k + 1) % names.length, st, names); };
+    $('#gPlay').onclick = () => { Snd.play('start'); this.closePanel(); this.newGame(k + 1); };
+  },
   panel(html) { const p = $('#panel'); p.innerHTML = html; p.hidden = false; $('#menu').hidden = true; $('#pClose').onclick = () => { Snd.play('tap'); this.closePanel(); }; },
   closePanel() { $('#panel').hidden = true; $('#menu').hidden = false; },
-  async newGame() {
+  async newGame(gid) {
     $('#menu').hidden = true; $('#story').textContent = 'LADE LANDESKARTE...';
     await this.ready;
     Snd.stopMusic(); Intro.stop(); $('#intro').hidden = true; $('#story').textContent = '';
-    War.open();
+    await War.open(); if (gid && War.phase === 'choose') War.startGame(gid);
   },
   toMenu() { $('#modal').hidden = true; $('#intro').hidden = false; Intro.start(); Snd.startMusic(); this.showMenu(); },
   async endScreen(r) {
