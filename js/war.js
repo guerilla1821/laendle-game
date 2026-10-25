@@ -93,8 +93,8 @@ const War = {
     const meta = Tiles.ok && Tiles.index.files && Tiles.index.files.kampf;
     if (!meta) throw new Error('kein Kampfraster im Index');
     const r = await fetch(CFG.dataBase + meta.path); if (!r.ok) throw new Error(r.status);
-    let buf = await r.arrayBuffer(); const head = new Uint8Array(buf, 0, 2);
-    if (head[0] === 0x1f && head[1] === 0x8b) buf = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+    const gunzip = async b => { const hd = new Uint8Array(b, 0, 2); return hd[0] === 0x1f && hd[1] === 0x8b ? await new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer() : b; };
+    const buf = await gunzip(await r.arrayBuffer());
     const { w, h, cell } = meta, N = w * h;
     const M = this.map = { w, h, N, cell, x0: meta.x0, y1: meta.y1, names: meta.gemeinden, gem: new Uint8Array(buf, 0, N), boden: new Uint8Array(buf, N, N), hoehe: new Uint16Array(buf.slice(2 * N, 4 * N)) };
     // Kosten pro Zelle (Gelände), Bevölkerung und Arbeitsplätze pro Zelle
@@ -114,9 +114,38 @@ const War = {
         if (d) { M.pers[i] = (+d.p || 0) * share; M.jobs[i] = (+d.j || 0) * share; }
       }
     }
-    this.buildBase();
+    // Umland (Schweiz, Österreich): nur Höhen, als Kulisse ausserhalb des Spielfelds
+    if (meta.umland) try {
+      const u = meta.umland, ru = await fetch(CFG.dataBase + u.path);
+      if (ru.ok) { const ub = await gunzip(await ru.arrayBuffer()); M.um = { w: u.w, h: u.h, cell: u.cell, k: u.cell / cell, gx0: (u.x0 - M.x0) / cell, gy0: (M.y1 - u.y1) / cell, hoehe: new Uint16Array(ub) }; }
+    } catch (e) { console.warn('Umland', e); }
+    this.buildBase(); this.buildUmland();
     this.relief = window.KAMPF_RELIEF;
     $('#wMsg').hidden = true;
+  },
+  // Höhe des Umlands an einer Rasterposition (Felder), 0 wenn unbekannt
+  umHeight(gx, gy) {
+    const U = this.map.um; if (!U) return 0;
+    const x = clamp((gx - U.gx0) / U.k - .5, 0, U.w - 1.001), y = clamp((gy - U.gy0) / U.k - .5, 0, U.h - 1.001), i = Math.floor(x), j = Math.floor(y), a = x - i, b = y - j, k = j * U.w + i, H = U.hoehe;
+    return (H[k] * (1 - a) + H[k + 1] * a) * (1 - b) + (H[k + U.w] * (1 - a) + H[k + U.w + 1] * a) * b;
+  },
+  buildUmland() {
+    const U = this.map.um; this.umCanvas = null; if (!U) return;
+    const cv = document.createElement('canvas'); cv.width = U.w; cv.height = U.h; const g = cv.getContext('2d'), img = g.createImageData(U.w, U.h), d = img.data, H = U.hoehe, w = U.w;
+    const hex = h => [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16));
+    // gedämpfte Töne: das Umland ist nur angedeutet
+    const P = [[0, ['#141c16', '#1b261d', '#233025']], [750, ['#0f1712', '#151f18', '#1c281f']], [1650, ['#22221b', '#2b2b23', '#35352c']], [2150, ['#292727', '#343232', '#423f3f']], [2450, ['#3c3c48', '#4e4e5c', '#62627a']]].map(([h, c]) => [h, c.map(hex)]);
+    const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+    for (let i = 0; i < U.w * U.h; i++) {
+      const hm = H[i]; if (!hm) continue; const x = i % w, y = (i / w) | 0;
+      let pal = P[0][1]; for (const [lim, c] of P) if (hm >= lim) pal = c;
+      const hn = H[i - w] || hm, hw = H[i - 1] || hm, hs = H[i + w] || hm, he = H[i + 1] || hm;
+      const sh = clamp(((hn - hs) + (hw - he)) / 160, -1, 1), th = (bayer[(y & 3) * 4 + (x & 3)] + .5) / 16;
+      let lvl = 1; if (sh > 0) lvl = sh > th ? 2 : 1; else if (sh < 0) lvl = -sh > th ? 0 : 1;
+      const c = pal[lvl], f = y & 1 ? .8 : 1;   // jede zweite Zeile dunkler: Schraffur für "ausserhalb"
+      d[i * 4] = c[0] * f; d[i * 4 + 1] = c[1] * f; d[i * 4 + 2] = c[2] * f; d[i * 4 + 3] = 255;
+    }
+    g.putImageData(img, 0, 0); this.umCanvas = cv;
   },
   buildBase() {
     const M = this.map, cv = document.createElement('canvas'); cv.width = M.w; cv.height = M.h;
@@ -530,7 +559,9 @@ const War = {
     const [ox, oy] = this.g2s(0, 0), s = this.cam.s, td = this.is3D() && War3D.ok, P = (x, y, l) => this.proj(x, y, l);
     if (td) { g.clearRect(0, 0, this.W, this.H); War3D.render(); }
     const R = this.relief;
-    if (!td && R && R.complete && R.naturalWidth) {
+    const U = M.um;
+    if (!td && this.umCanvas) { g.imageSmoothingEnabled = false; g.drawImage(this.umCanvas, ox + U.gx0 * s, oy + U.gy0 * s, U.w * U.k * s, U.h * U.k * s); }
+    else if (!td && R && R.complete && R.naturalWidth) {
       // Schweiz und Österreich nur als dunkles Relief
       const lx = (-622.276 - (M.x0 - O0[0])) / M.cell, ly = ((M.y1 - O0[1]) - 26477.241) / M.cell, k = 20.01346 / M.cell;
       g.globalAlpha = .28; g.imageSmoothingEnabled = false;
@@ -557,6 +588,7 @@ const War = {
       }
     }
     const txt = (t, x, y, col) => { g.fillStyle = '#000'; for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [2, 2]]) g.fillText(t, x + dx, y + dy); g.fillStyle = col; g.fillText(t, x, y); };
+    if (M.um) { g.font = `8px ${font}`; for (const [n, X, Y] of [['SCHWEIZ', 2751600, 1221500], ['SCHWEIZ', 2763500, 1212500], ['ÖSTERREICH', 2768000, 1231500]]) { const [x, y] = P((X - M.x0) / M.cell, (M.y1 - Y) / M.cell, 4); if (x > -50 && y > -20 && x < this.W + 50 && y < this.H + 20) txt(n, Math.round(x), Math.round(y), '#83769c'); } }
     for (const p of this.players) {
       if (this.phase === 'play' && !p.alive) continue;
       const [x0, y0] = P(p.lx + .5, p.ly + .5, 3), x = Math.round(x0), y = Math.round(y0);
