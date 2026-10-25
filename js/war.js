@@ -1,4 +1,5 @@
 'use strict';
+const snd = n => { if (window.Snd) Snd.play(n); };
 /* Kampf um Liechtenstein: Gebietsstrategie nach dem Prinzip von OpenFront, vereinfacht.
    Raster 25 m (aus der Pipeline): Gemeinde, Boden, Höhe. Bevölkerung und Arbeitsplätze aus dem Hektarraster.
    11 Gemeinden, eine davon spielst du, die anderen sind Bots. Wer 70 % des Landes hält, gewinnt. */
@@ -11,12 +12,12 @@ const WAR_BUILD = {
 const WIN_SHARE = 0.7, PACT_TIME = 300, TRAITOR_TIME = 30;
 
 const War = {
-  inited: false, map: null, phase: 'off', speed: 1, ratio: .3, build: null, cam: { x: 0, y: 0, s: 1 },
+  inited: false, map: null, phase: 'off', speed: 1, halt: new Set(), score: 0, ratio: .3, build: null, cam: { x: 0, y: 0, s: 1 },
 
   /* ---------- Einstieg ---------- */
   async open() {
     this.init();
-    $('#title').hidden = true; $('#mapScreen').hidden = true; $('#warScreen').hidden = false; this.resize();
+    $('#warScreen').hidden = false; this.resize();
     if (!this.map) {
       $('#wMsg').textContent = 'Lade die Landeskarte …'; $('#wMsg').hidden = false;
       try { await this.loadMap(); } catch (e) { console.warn(e); $('#wMsg').innerHTML = `Die Kampfkarte ist noch nicht verfügbar. Sie entsteht beim nächsten Lauf der Geodaten-Pipeline.<br><button class="btn" id="wBack2">Zurück</button>`; $('#wBack2').onclick = () => this.exit(); return; }
@@ -24,7 +25,7 @@ const War = {
     this.choose();
   },
   exit() {
-    this.phase = 'off'; $('#warScreen').hidden = true; $('#mapScreen').hidden = false; $('#title').hidden = false; MapV.resize();
+    this.phase = 'off'; this.halt.clear(); $('#warScreen').hidden = true; $('#wTut').hidden = true; if (this.onExit) this.onExit();
   },
   init() {
     if (this.inited) return; this.inited = true;
@@ -42,14 +43,14 @@ const War = {
     const up = e => { if (!pts.has(e.pointerId)) return; pts.delete(e.pointerId); if (pts.size < 2) pinch = null; if (down && !down.moved && pts.size === 0) this.tap(e.clientX, e.clientY); if (pts.size === 0) down = null; };
     c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
     c.addEventListener('wheel', e => { e.preventDefault(); this.zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * .0015)); }, { passive: false });
-    $('#wExit').onclick = () => this.exit(); $('#wHelp').onclick = () => this.tutorial(0);
+    $('#wExit').onclick = () => this.exit(); $('#wHelp').onclick = () => { snd('tap'); this.tutorial(0); };
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.halt.add('hidden'); else this.halt.delete('hidden'); });
     $('#wRatio').oninput = e => { this.ratio = e.target.value / 100; $('#wRatioV').textContent = e.target.value + ' %'; };
-    document.querySelectorAll('#wSpeed button').forEach(b => b.onclick = () => { this.speed = +b.dataset.sp; document.querySelectorAll('#wSpeed button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
     document.querySelectorAll('#wBuild button').forEach(b => b.onclick = () => { this.build = this.build === b.dataset.b ? null : b.dataset.b; this.updateBuildBtns(); if (this.build) toast(`${WAR_BUILD[this.build].name}: Tippe auf dein Gebiet.`); });
     let last = performance.now(), acc = 0;
     const loop = t => {
       const dt = Math.min(.25, (t - last) / 1000); last = t;
-      if (this.phase === 'play' && this.speed > 0) { acc += dt * this.speed; let n = 0; while (acc >= .1 && n < 8) { acc -= .1; this.tick(); n++; } if (n >= 8) acc = 0; }
+      if (this.phase === 'play' && !this.halt.size) { acc += dt; let n = 0; while (acc >= .1 && n < 8) { acc -= .1; this.tick(); n++; } if (n >= 8) acc = 0; }
       if (this.phase !== 'off') this.render();
       requestAnimationFrame(loop);
     };
@@ -84,7 +85,7 @@ const War = {
       }
     }
     this.buildBase();
-    this.relief = MapV.relief;
+    this.relief = window.KAMPF_RELIEF;
     $('#wMsg').hidden = true;
   },
   buildBase() {
@@ -120,7 +121,7 @@ const War = {
   },
   startGame(gid) {
     const M = this.map; this.me = this.players[gid - 1]; this.me.bot = false;
-    this.owner.fill(0); this.buildings = []; this.attacks = []; this.feed = []; this.t = 0; this.build = null; this.over = false; this.pacts = new Map(); this.lastHit = {}; this.refused = {}; this.maxWarned = -999; this.nextOffer = 60;
+    this.owner.fill(0); this.buildings = []; this.attacks = []; this.feed = []; this.t = 0; this.build = null; this.over = false; this.score = 0; this.pacts = new Map(); this.lastHit = {}; this.refused = {}; this.maxWarned = -999; this.nextOffer = 60;
     const R = 14;
     for (const p of this.players) {
       p.cells = p.pers = p.jobs = 0; p.alive = true; p.gold = 120; p.traitorUntil = 0; p.growth = 0; p.goldRate = 0; p.nextAi = 20 + Math.random() * 20;
@@ -131,11 +132,17 @@ const War = {
       }
       p.troops = Math.round(this.maxTroops(p) * .35);
     }
-    this.phase = 'play'; this.fullRepaint(); this.adjacency(); this.speed = 1; document.querySelectorAll('#wSpeed button').forEach(x => x.setAttribute('aria-pressed', x.dataset.sp === '1'));
+    this.phase = 'play'; this.fullRepaint(); this.adjacency(); this.halt.clear();
     $('#wChoose').hidden = true; $('#wHud').hidden = false; $('#wBottom').hidden = false; $('#wBoard').hidden = false; this.updateBuildBtns();
     this.cam.x = this.me.lx; this.cam.y = this.me.ly; this.cam.s = Math.max(this.cam.s, Math.min(this.W, this.H) / 140); this.clampCam();
     this.log(`Du führst ${this.me.name}. Tippe auf neutrales Land, um dich auszubreiten.`);
-    this.labels(); this.updateHud();
+    // Faktor: schwache Startgemeinden (wenig Truppen, steiles Gelände) geben mehr Punkte
+    const M2 = this.map, cs = new Float64Array(this.players.length + 1), cn = new Float64Array(this.players.length + 1);
+    for (let i = 0; i < M2.N; i++) { const g = M2.gem[i]; if (g && M2.cost[i] !== Infinity) { cs[g] += M2.cost[i]; cn[g]++; } }
+    const terr = p => cs[p.id] / Math.max(1, cn[p.id]), avgT = this.players.reduce((s, p) => s + terr(p), 0) / this.players.length;
+    const avg = this.players.reduce((s, p) => s + this.maxTroops(p), 0) / this.players.length;
+    this.factor = Math.round(clamp(Math.sqrt(avg / this.maxTroops(this.me)) * (terr(this.me) / avgT), 1, 3) * 10) / 10;
+    this.labels(); this.updateHud(); snd('start');
     if (!store.get('laendle-kampf-tut')) this.tutorial(0);
   },
 
@@ -148,6 +155,7 @@ const War = {
     if (old) { const q = this.players[old - 1]; q.cells--; q.pers -= M.pers[i]; q.jobs -= M.jobs[i]; }
     this.owner[i] = pid;
     if (pid) { const p = this.players[pid - 1]; p.cells++; p.pers += M.pers[i]; p.jobs += M.jobs[i]; }
+    if (!silent && this.me) { if (pid === this.me.id) { this.score += old ? 3 : 1; this.conq = (this.conq || 0) + 1; } else if (old === this.me.id) this.lost = (this.lost || 0) + 1; }
     for (const b of this.buildings) if (b.i === i && b.owner !== pid) { b.owner = pid; if (!silent && pid === this.me.id) this.log(`${WAR_BUILD[b.type].name} erobert!`); }
     if (!silent) { this.paint(i); const w = M.w; this.paint(i - 1); this.paint(i + 1); this.paint(i - w); this.paint(i + w); }
   },
@@ -173,7 +181,7 @@ const War = {
       if (!cand.length) return false;
       a = { att: pid, def: target, troops: 0, cand, inSet, tx, ty };
       this.attacks.push(a);
-      if (target && this.players[target - 1] === this.me) this.log(`${p.name} greift dich an!`, 'bad');
+      if (target && this.players[target - 1] === this.me) { this.log(`${p.name} greift dich an!`, 'bad'); snd('alarm'); }
     }
     a.tx = tx; a.ty = ty; a.troops += troops; p.troops -= troops;
     return true;
@@ -211,7 +219,7 @@ const War = {
   eliminate(p, by) {
     p.alive = false; p.troops = 0; this.attacks = this.attacks.filter(a => a.att !== p.id);
     for (const b of this.buildings) if (b.owner === p.id) b.owner = by.id;
-    by.gold += Math.round(p.gold); p.gold = 0;
+    by.gold += Math.round(p.gold); p.gold = 0; if (by === this.me) { this.score += 5000; snd('fanfare'); }
     this.log(`${p.name} wurde von ${by.name} erobert.`, p === this.me ? 'bad' : by === this.me ? 'good' : '');
     if (p === this.me && !this.over) this.end(false);
   },
@@ -226,6 +234,7 @@ const War = {
       p.gold += p.goldRate * .1;
     }
     this.attacks = this.attacks.filter(a => this.stepAttack(a));
+    if (Math.floor(this.t * 10) % 4 === 0) { if (this.conq) snd('tick'); if (this.lost > 3) snd('hit'); this.conq = 0; this.lost = 0; }
     if (Math.floor(this.t * 10) % 20 === 0) this.adjacency();
     for (const p of this.players) if (p.bot && p.alive && this.t >= p.nextAi) { this.botThink(p); p.nextAi = this.t + 1.2 + Math.random() * 2.2; }
     if (Math.floor(this.t * 10) % 10 === 0) { this.labels(); this.updateHud(); this.pactTick(); }
@@ -288,19 +297,17 @@ const War = {
     const M = this.map;
     if (this.buildings.some(b => Math.abs(b.i % M.w - i % M.w) + Math.abs(Math.floor(b.i / M.w) - Math.floor(i / M.w)) < 6)) { if (p === this.me) toast('Zu nah an einem anderen Gebäude.'); return false; }
     p.gold -= cost; this.buildings.push({ type, owner: p.id, i });
-    if (p === this.me) this.log(`${WAR_BUILD[type].name} gebaut.`);
+    if (p === this.me) { this.log(`${WAR_BUILD[type].name} gebaut.`); this.score += 50; snd('build'); }
     return true;
   },
   end(win, winner) {
-    this.over = true; this.speed = 0;
-    const m = $('#modal'); m.hidden = false;
-    m.innerHTML = `<div class="mcard"><h2>${win ? 'Sieg! Liechtenstein gehört ' + esc(this.me.name) : winner ? esc(winner.name) + ' beherrscht Liechtenstein' : esc(this.me.name) + ' ist gefallen'}</h2>
-      <p>${win ? `Du hältst ${Math.round(this.me.cells / this.map.land * 100)} % des Landes nach ${Math.round(this.t / 60)} Minuten.` : winner ? `${esc(winner.name)} hält ${Math.round(winner.cells / this.map.land * 100)} % des Landes.` : 'Deine Gemeinde wurde vollständig erobert.'}</p>
-      <div class="trow"><button class="btn red" id="wAgain">Neue Partie</button><button class="btn ghost" id="wQuit">Zur Karte</button>${win ? '<button class="btn ghost" id="wCont">Weiterspielen</button>' : ''}</div></div>`;
-    $('#wAgain').onclick = () => { m.hidden = true; this.choose(); };
-    $('#wQuit').onclick = () => { m.hidden = true; this.exit(); };
-    if (win) $('#wCont').onclick = () => { m.hidden = true; this.speed = 1; };
+    this.over = true; this.halt.add('end');
+    const land = Math.round(this.me.cells / this.map.land * 100), min = Math.max(1, Math.round(this.t / 60));
+    const bonus = win ? 50000 + Math.max(0, Math.round((1500 - this.t) * 40)) : 0, total = Math.round((this.score + bonus) * this.factor);
+    snd(win ? 'win' : 'lose');
+    if (this.onEnd) this.onEnd({ win, winner, land, min, base: this.score, bonus, factor: this.factor, total, gem: this.me.name, color: this.me.color });
   },
+  continueAfterWin() { this.halt.delete('end'); },
   log(msg, cls) {
     const el = $('#wFeed'); if (!el) return; const d = document.createElement('div'); d.textContent = msg; if (cls) d.className = cls; el.prepend(d);
     while (el.children.length > 4) el.lastChild.remove(); setTimeout(() => d.classList.add('old'), 6000);
@@ -313,13 +320,13 @@ const War = {
   tap(sx, sy) {
     const i = this.cellAt(sx, sy), M = this.map; if (i < 0 || !M.gem[i]) return;
     if (this.phase === 'choose') { this.startGame(M.gem[i]); return; }
-    if (this.phase !== 'play' || this.over && this.speed === 0) return;
+    if (this.phase !== 'play' || this.halt.has('end')) return;
     if (!this.passable(i)) { toast('Wasser kann man nicht erobern.'); return; }
     const o = this.owner[i], me = this.me;
     if (this.build) { if (o !== me.id) { toast('Bauen geht nur auf deinem Gebiet.'); return; } if (this.place(me, this.build, i)) { this.build = null; this.updateBuildBtns(); } else if (me.gold < this.costOf(me, this.build)) toast('Zu wenig Gold.'); return; }
     if (o === me.id) { toast('Das ist dein Gebiet. Tippe auf neutrales Land oder einen Nachbarn.'); return; }
     if (o && this.allied(me.id, o)) { toast(`${this.players[o - 1].name} ist mit dir verbündet. Bündnis zuerst in der Rangliste brechen.`); return; }
-    const ok = this.attack(me.id, o, me.troops * this.ratio, i % M.w, Math.floor(i / M.w));
+    const ok = this.attack(me.id, o, me.troops * this.ratio, i % M.w, Math.floor(i / M.w)); if (ok) snd(o ? 'charge' : 'tap');
     if (!ok) toast(me.troops * this.ratio < 10 ? 'Zu wenig Truppen.' : 'Keine gemeinsame Grenze.');
     else if (o) this.log(`Angriff auf ${this.players[o - 1].name} mit ${fmtK(Math.floor(me.troops / (1 - this.ratio) * this.ratio))} Truppen.`);
     this.updateHud();
@@ -343,11 +350,11 @@ const War = {
   updateHud() {
     if (!this.me) return; const me = this.me, M = this.map, max = this.maxTroops(me), full = me.troops >= max * .97;
     $('#wName').textContent = me.name; $('#wName').style.color = me.color;
-    $('#wTroops').textContent = `${fmtK(me.troops)} / ${fmtK(max)}`;
+    $("#wTroops").textContent = `${fmtK(me.troops)}/${fmtK(max)}`;
     const gr = (max * .006 + me.troops * .06) * Math.max(0, 1 - me.troops / max); $('#wGrow').textContent = full ? 'Maximum' : `+${fmtK(gr)}/s`; $('#wGrow').classList.toggle('full', full);
     if (full && me.alive && this.t - this.maxWarned > 90) { this.maxWarned = this.t; this.log('Truppen am Maximum: Es wachsen keine neuen nach. Greif an, erobere Land oder baue Siedlungen.', 'warn'); }
     $('#wGold').textContent = fmtK(me.gold); $('#wGoldR').textContent = `+${(me.goldRate || 0).toFixed(1)}/s`;
-    $('#wLand').textContent = (me.cells / M.land * 100).toFixed(1) + ' %';
+    $('#wLand').textContent = (me.cells / M.land * 100).toFixed(1) + ' %'; $('#wScore').textContent = Math.round(this.score * (this.factor || 1)).toLocaleString('de-CH');
     const att = this.attacks.filter(a => a.att === me.id).reduce((s, a) => s + a.troops, 0); $('#wAtt').textContent = att ? `${fmtK(att)} im Angriff` : '';
     this.renderBoard(); this.updateBuildBtns();
   },
@@ -393,7 +400,7 @@ const War = {
   },
   offer(from, to) {
     const w = this.willing(to, from);
-    if (Math.random() < w) { this.makePact(from, to); }
+    if (Math.random() < w) { this.makePact(from, to); snd('pact'); }
     else { this.refused[to.id] = this.t + 40; this.log(`${to.name} lehnt dein Bündnis ab.`); }
   },
   breakPact(a, b, betray) {
@@ -429,26 +436,34 @@ const War = {
   },
 
   /* ---------- Anleitung ---------- */
-  tutorial(k) {
-    const steps = [
+  tutSteps() {
+    return [
       { t: 'Kampf um Liechtenstein', b: `Du führst eine Gemeinde. Wer ${WIN_SHARE * 100} % des Landes hält, gewinnt. Die anderen zehn Gemeinden spielt der Computer.` },
-      { sel: '#wTroopsBox', t: 'Truppen', b: 'Links deine Truppen, rechts das Maximum. Daneben das Wachstum pro Sekunde. Am schnellsten wachsen sie bei etwa der Hälfte des Maximums. <b>Am Maximum wächst nichts mehr</b>: dann angreifen oder Land dazugewinnen.' },
-      { sel: '#wc', t: 'Ausbreiten', b: 'Tippe auf ungefärbtes Land neben deinem Gebiet. Deine Truppen rücken dorthin vor. Talboden ist billig, Hang, Wald und Berge kosten viel mehr Truppen pro Feld. Hauptstrassen sind billig, Wasser geht nicht.' },
-      { sel: '.wr', t: 'Angriffsstärke', b: 'So viel Prozent deiner Truppen schickt ein Tippen los. Nicht verbrauchte Truppen kehren zurück. Angriffe auf Nachbarn kosten mehr, je dichter sie besetzt sind.' },
+      { sel: '#wTroopsBox', t: 'Truppen', b: 'Deine Truppen, dahinter das Maximum und das Wachstum pro Sekunde. Am schnellsten wachsen sie bei etwa der Hälfte des Maximums. AM MAXIMUM WÄCHST NICHTS MEHR: dann angreifen oder Land dazugewinnen.' },
+      { sel: '#wc', t: 'Ausbreiten', b: 'Tippe auf ungefärbtes Land neben deinem Gebiet. Talboden ist billig, Hang, Wald und Berge kosten viel mehr Truppen pro Feld. Hauptstrassen sind billig, Wasser geht nicht.' },
+      { sel: '.wr', t: 'Angriffsstärke', b: 'So viel Prozent deiner Truppen schickt ein Tippen los. Nicht verbrauchte Truppen kehren zurück. Nachbarn kosten mehr, je dichter sie besetzt sind.' },
       { sel: '#wGoldBox', t: 'Gold', b: 'Gold kommt vor allem von den Arbeitsplätzen in deinem Gebiet. Du brauchst es nur für Gebäude.' },
-      { sel: '#wBuild', t: 'Gebäude', b: '🏘️ <b>Siedlung</b>: +1500 Truppen-Maximum, also auch schnelleres Wachstum.<br>🏰 <b>Burg</b>: Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen. An die Grenze bauen.<br>💰 <b>Markt</b>: +6 Gold pro Sekunde.<br>Jedes weitere Gebäude derselben Art wird teurer. Erobert man Land, gehören die Gebäude dem Eroberer.' },
-      { sel: '#wBoard', t: 'Rangliste und Bündnisse', b: 'Hier stehen die drei Führenden. Aufklappen zeigt alle Gemeinden mit Truppen. Mit 🤝 bietest du ein Bündnis an (5 Minuten, verlängerbar). Verbündete greifen sich nicht an. Wer ein Bündnis bricht, gilt 30 s als Verräter und verteidigt schlechter.' },
-      { sel: '#wSpeed', t: 'Tempo und Hilfe', b: 'Pause und doppeltes Tempo. Ziehen verschiebt die Karte, Mausrad oder zwei Finger zoomen. Mit ? öffnest du diese Anleitung wieder.' },
+      { sel: '#wBuild', t: 'Gebäude', b: 'SIEDLUNG: +1500 Truppen-Maximum, also schnelleres Wachstum.<br>BURG: Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen.<br>MARKT: +6 Gold pro Sekunde.<br>Jedes weitere Gebäude derselben Art wird teurer.' },
+      { sel: '#wBoard', t: 'Rangliste und Bündnisse', b: 'Die drei Führenden. Aufklappen zeigt alle Gemeinden. Mit 🤝 bietest du ein Bündnis an (5 Minuten). Verbündete greifen sich nicht an. Wer ein Bündnis bricht, gilt 30 s als Verräter.' },
+      { sel: '#wScoreBox', t: 'Punkte', b: 'Neutrales Feld 1 Punkt, feindliches Feld 3, Gebäude 50, ausgelöschte Gemeinde 5000, Sieg 50000 plus Zeitbonus. Schwache Startgemeinden zählen mehr (Faktor bis ×3).' },
+      { sel: '#wHelp', t: 'Hilfe', b: 'Ziehen verschiebt die Karte, Mausrad oder zwei Finger zoomen. Während die Anleitung offen ist, ruht das Spiel. Mit ? kommt sie wieder.' },
     ];
-    document.querySelectorAll('.tutHi').forEach(e => e.classList.remove('tutHi'));
-    const el = $('#wTut');
-    if (k >= steps.length) { el.hidden = true; store.set('laendle-kampf-tut', 1); if (this.speedBeforeTut != null) { this.speed = this.speedBeforeTut; this.speedBeforeTut = null; } return; }
-    if (this.speedBeforeTut == null) { this.speedBeforeTut = this.speed; this.speed = 0; }
-    const st = steps[k]; if (st.sel && st.sel !== '#wc') { const t = $(st.sel); if (t) t.classList.add('tutHi'); }
-    el.hidden = false;
-    el.innerHTML = `<div class="tn">${k + 1} / ${steps.length}</div><h3>${esc(st.t)}</h3><p>${st.b}</p><div class="trow"><button class="btn red" id="tutNext">${k === steps.length - 1 ? 'Los gehts' : 'Weiter'}</button>${k < steps.length - 1 ? '<button class="btn ghost" id="tutSkip">Überspringen</button>' : ''}</div>`;
-    $('#tutNext').onclick = () => this.tutorial(k + 1); if ($('#tutSkip')) $('#tutSkip').onclick = () => this.tutorial(steps.length);
   },
+  tutorial(k) {
+    const steps = this.tutSteps(), el = $('#wTut');
+    document.querySelectorAll('.tutHi').forEach(e => e.classList.remove('tutHi'));
+    if (k >= steps.length) { el.hidden = true; store.set('laendle-kampf-tut', 1); this.halt.delete('tut'); return; }
+    this.halt.add('tut');
+    const st = steps[k], t = st.sel && st.sel !== '#wc' ? $(st.sel) : null; if (t) t.classList.add('tutHi');
+    el.hidden = false;
+    el.innerHTML = `<button class="px-x" id="tutX" aria-label="Anleitung schliessen">✕</button><div class="tn">${k + 1}/${steps.length}</div><h3>${esc(st.t)}</h3><p>${st.b}</p><div class="trow"><button class="px-btn" id="tutNext">${k === steps.length - 1 ? 'LOS!' : 'WEITER ▶'}</button></div>`;
+    // der Karte ausweichen: liegt das markierte Element unten, kommt die Karte nach oben und umgekehrt
+    el.classList.remove('top', 'bottom');
+    const r = t && t.getBoundingClientRect(); el.classList.add(r && r.top + r.height / 2 > innerHeight * .5 ? 'top' : 'bottom');
+    $('#tutNext').onclick = () => { snd('tap'); this.tutorial(k + 1); };
+    $('#tutX').onclick = () => { snd('tap'); this.tutorial(steps.length); };
+  },
+
 
   /* ---------- Darstellung ---------- */
   rgb(hex) { this._rgb = this._rgb || {}; if (!this._rgb[hex]) this._rgb[hex] = [1, 3, 5].map(k => parseInt(hex.slice(k, k + 2), 16)); return this._rgb[hex]; },
@@ -499,9 +514,9 @@ const War = {
       if (this.phase === 'play' && !p.alive) continue;
       const [x, y] = this.g2s(p.lx + .5, p.ly + .5), size = this.phase === 'play' ? clamp(Math.sqrt(p.cells) * s * .22, 10, 30) : clamp(s * 9, 11, 22);
       if (x < -100 || y < -50 || x > this.W + 100 || y > this.H + 50) continue;
-      g.font = `700 ${size}px var(--ui, system-ui)`; g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.85)'; g.fillStyle = '#18223a';
+      g.font = `${size}px ${this.labelFont || 'system-ui'}`; g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.85)'; g.fillStyle = '#18223a';
       const nm = (this.phase === 'play' && p !== this.me && this.allied(p.id, this.me.id) ? '🤝 ' : '') + p.name; g.strokeText(nm, x, y); g.fillText(nm, x, y);
-      if (this.phase === 'play') { g.font = `${size * .8}px var(--ui, system-ui)`; g.strokeText(fmtK(p.troops), x, y + size); g.fillText(fmtK(p.troops), x, y + size); }
+      if (this.phase === 'play') { g.font = `${size * .8}px ${this.labelFont || 'system-ui'}`; g.strokeText(fmtK(p.troops), x, y + size); g.fillText(fmtK(p.troops), x, y + size); }
     }
   },
 };

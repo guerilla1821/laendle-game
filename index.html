@@ -181,58 +181,6 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
   #dTop .tbtn#dTime{display:none}
 }
 
-#warScreen{background:#dfe6ea}
-#wc{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
-#wTip{position:fixed;z-index:5;background:rgba(24,34,58,.9);color:#fff;font-size:12px;padding:6px 8px;border-radius:7px;pointer-events:none;line-height:1.4}
-#wMsg{left:50%;top:50%;transform:translate(-50%,-50%);padding:18px 20px;max-width:340px;text-align:center;line-height:1.5}
-#wMsg .btn{margin-top:10px}
-#wChoose{left:50%;bottom:16px;transform:translateX(-50%);padding:12px 14px;display:flex;flex-direction:column;gap:6px;width:min(620px,calc(100% - 32px));box-sizing:border-box}
-#wChoose span{font-size:13px;color:var(--muted)}
-.wgems{display:flex;flex-wrap:wrap;gap:6px}
-.wgems button{border:2px solid var(--c);background:#fff;border-radius:8px;padding:6px 10px;font:inherit;font-weight:700;font-size:13px;cursor:pointer}
-.wgems button:hover{background:var(--c);color:#fff}
-#wHud{top:10px;left:10px;right:10px;display:flex;align-items:center;gap:12px;padding:6px 10px;flex-wrap:wrap}
-#wHud .wst{font-size:14px;white-space:nowrap}#wAtt{font-size:12px;color:var(--red);font-weight:700}
-#wHud .speeds{margin-left:auto}
-#wBoard{top:62px;right:10px;padding:8px 10px;font-size:12.5px;min-width:170px}
-#wBoard div{display:flex;align-items:center;gap:6px;padding:1px 0}#wBoard i{width:10px;height:10px;border-radius:3px}#wBoard span{margin-left:auto;font-variant-numeric:tabular-nums}
-#wBoard .me{font-weight:800}#wBoard .goal{color:var(--muted);border-top:1px solid var(--line);margin-top:4px;padding-top:4px}
-#wFeed{position:absolute;left:12px;top:64px;display:flex;flex-direction:column;gap:4px;pointer-events:none;max-width:min(360px,60%)}
-#wFeed div{background:rgba(24,34,58,.82);color:#fff;font-size:12.5px;padding:5px 9px;border-radius:7px;transition:opacity 1s}
-#wFeed div.bad{background:rgba(196,31,58,.9)}#wFeed div.good{background:rgba(58,156,85,.9)}#wFeed div.old{opacity:.35}
-#wBottom{left:50%;bottom:12px;transform:translateX(-50%);display:flex;gap:14px;align-items:center;padding:8px 12px;width:max-content;max-width:calc(100% - 24px);box-sizing:border-box}
-.wr{display:flex;flex-direction:column;font-size:12px;gap:2px;min-width:150px}.wr input{width:100%;accent-color:var(--red)}
-#wBuild{display:flex;gap:6px}
-#wBuild button{display:flex;flex-direction:column;align-items:center;border:1px solid var(--line);background:#fff;border-radius:9px;padding:4px 8px;font:inherit;font-size:18px;cursor:pointer;min-width:62px}
-#wBuild button span{font-size:11px;font-weight:700}#wBuild button small{font-size:11px;color:var(--gold);font-weight:700}
-#wBuild button[aria-pressed="true"]{border-color:var(--red);background:#fff1f3}#wBuild button:disabled{opacity:.45}
-@media(max-width:700px){
-  #wHud{gap:7px;padding:5px 7px;flex-wrap:nowrap}#wHud .wst{font-size:12px}#wName,#wHud .lg,#wAtt,#wGoldR,#wLandBox{display:none}#wHud #wHelp{min-width:30px;padding:0 6px}#wHud .speeds button{height:28px;min-width:26px;padding:0 5px;font-size:11px}
-  #wBoard{top:auto;bottom:118px;right:8px;min-width:0;font-size:11px;padding:6px 8px}
-  #wFeed{top:auto;bottom:118px;left:8px;max-width:52%}#wFeed div{font-size:11px;padding:4px 7px}#wFeed div:nth-child(n+3){display:none}
-  #wBottom{left:8px;right:8px;transform:none;width:auto;flex-direction:column;align-items:stretch;gap:6px;bottom:8px}
-  #wBuild button{flex:1}
-  #warScreen #wTut{top:auto;bottom:160px;transform:translateX(-50%);max-height:calc(100% - 240px);overflow:auto}
-  #wBoard{max-height:45%}
-  #wBoard.open{top:62px;bottom:auto;max-height:calc(100% - 200px);z-index:4}
-}
-
-#wGrow,#wGoldR{font-size:11px;color:var(--good);font-weight:700}#wGrow.full{color:var(--red)}
-#wHud #wHelp{margin-left:auto}#wHud .speeds{margin-left:0}
-#wBoard{max-height:calc(100% - 200px);overflow:auto}
-#wBoard div{cursor:pointer}#wBoard em{font-style:normal;color:var(--muted);min-width:20px}
-#wBoard .dead{opacity:.45}#wBoard .tr{min-width:42px;text-align:right;color:var(--muted)}
-#wBoard div button{border:1px solid var(--line);background:#fff;border-radius:6px;font-size:12px;padding:1px 5px;cursor:pointer;margin-left:4px}
-#wBoard .pact{color:var(--good);font-weight:700}#wBoard .trait{color:var(--red)}
-#wBoard .more{display:block;width:100%;border:0;background:none;color:var(--blue);font:inherit;font-size:12px;font-weight:700;padding:4px 0 0;cursor:pointer;text-align:left}
-#wFeed div.warn{background:rgba(222,157,36,.95)}
-#wFeed div.ask{background:#fff;color:var(--ink);border:2px solid var(--blue);pointer-events:auto}
-#wFeed div.ask button{border:0;border-radius:6px;background:var(--blue);color:#fff;font:inherit;font-size:12px;font-weight:700;padding:3px 8px;margin-left:4px;cursor:pointer}
-#wFeed div.ask button.no{background:#e3e8ee;color:var(--ink)}
-#wBuild button em{font-style:normal;font-size:10px;color:var(--muted);white-space:nowrap}
-#wTut{left:50%;top:72px;transform:translateX(-50%);width:min(400px,calc(100% - 32px));box-sizing:border-box;padding:16px 18px;z-index:6}
-#wTut h3{margin:2px 0 6px;font-family:var(--display);font-size:20px}#wTut p{margin:0 0 12px;line-height:1.5;font-size:14px}#wTut .tn{font-size:11px;color:var(--muted);font-weight:700}
-.tutHi{outline:3px solid var(--red)!important;outline-offset:3px;border-radius:10px;position:relative;z-index:5}
 </style>
 </head>
 <body>
@@ -337,33 +285,6 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
     </div>
   </section>
 
-  <section id="warScreen" class="screen" hidden>
-    <canvas id="wc" aria-label="Karte Kampf um Liechtenstein"></canvas>
-    <div id="wTip" hidden></div>
-    <div id="wMsg" class="hud" hidden></div>
-    <div id="wChoose" class="hud" hidden></div>
-    <div id="wHud" class="hud" hidden>
-      <button class="tbtn" id="wExit" aria-label="Zur Karte">‹<span class="lg"> Karte</span></button>
-      <b id="wName"></b>
-      <span class="wst" id="wTroopsBox" title="Truppen / Maximum, Wachstum pro Sekunde">⚔ <b id="wTroops">0</b> <small id="wGrow"></small></span>
-      <span class="wst" id="wGoldBox" title="Gold, Einnahmen pro Sekunde">● <b id="wGold">0</b> <small id="wGoldR"></small></span>
-      <span class="wst" id="wLandBox" title="Landanteil">▦ <b id="wLand">0 %</b></span>
-      <span id="wAtt"></span>
-      <button class="tbtn" id="wHelp" title="Anleitung">?</button>
-      <div class="speeds" id="wSpeed" role="group" aria-label="Tempo"><button data-sp="0" aria-label="Pause">II</button><button data-sp="1" aria-label="Normal">▶</button><button data-sp="2" aria-label="Schnell">▶▶</button></div>
-    </div>
-    <div id="wBoard" class="hud"></div>
-    <div id="wFeed"></div>
-    <div id="wTut" class="hud" hidden></div>
-    <div id="wBottom" class="hud" hidden>
-      <label class="wr"><span>Angriffsstärke <b id="wRatioV">30 %</b></span><input type="range" id="wRatio" min="5" max="100" step="5" value="30"></label>
-      <div id="wBuild">
-        <button data-b="siedlung" title="Siedlung: +1500 max. Truppen">🏘️<span>Siedlung</span><em></em><small></small></button>
-        <button data-b="burg" title="Burg: doppelte Verteidigung im Umkreis von 300 m">🏰<span>Burg</span><em></em><small></small></button>
-        <button data-b="markt" title="Markt: +6 Gold pro Sekunde">💰<span>Markt</span><em></em><small></small></button>
-      </div>
-    </div>
-  </section>
 
   <div id="modal" hidden></div>
   <div id="loadOverlay" hidden>Lade die Umgebung …</div>
@@ -377,6 +298,5 @@ details.vereine ul{margin:6px 0 0;padding-left:18px;max-height:220px;overflow:au
 <script src="js/data.js?v=dev"></script>
 <script src="js/game.js?v=dev"></script>
 <script src="js/drive.js?v=dev"></script>
-<script src="js/war.js?v=dev"></script>
 </body>
 </html>

@@ -1,0 +1,266 @@
+'use strict';
+/* Kampf um Liechtenstein: eigenständige Seite. Hilfsfunktionen, Chiptune-Ton, Intro, Menü, Highscore. */
+const $ = s => document.querySelector(s);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } } };
+function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; $('#toasts').appendChild(t); setTimeout(() => t.remove(), 3800); while ($('#toasts').children.length > 3) $('#toasts').firstChild.remove(); }
+function rng(seed) { let s = (seed >>> 0) || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
+const DATA = null; // die Kacheldekodierung wird hier nicht gebraucht
+
+/* ======================= Ton: 4 Stimmen wie ein Heimcomputer der 80er ======================= */
+const Snd = {
+  ctx: null, on: store.get('kampf-ton') !== false, playing: false,
+  init() {
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    const c = this.ctx = new AC();
+    this.master = c.createGain(); this.master.gain.value = this.on ? .5 : 0; this.master.connect(c.destination);
+    // Pulswellen mit 12,5 %, 25 % und 50 % Tastverhältnis, wie bei den Soundchips der Zeit
+    const pulse = d => { const n = 32, re = new Float32Array(n), im = new Float32Array(n); for (let k = 1; k < n; k++) im[k] = 2 / (k * Math.PI) * Math.sin(k * Math.PI * d); return c.createPeriodicWave(re, im); };
+    this.w12 = pulse(.125); this.w25 = pulse(.25); this.w50 = pulse(.5);
+    const len = c.sampleRate, b = c.createBuffer(1, len, c.sampleRate), d = b.getChannelData(0); let v = 0;
+    for (let i = 0; i < len; i++) { if (i % 3 === 0) v = Math.random() * 2 - 1; d[i] = v; }   // grobes Rauschen
+    this.noise = b;
+  },
+  setOn(v) { this.on = v; store.set('kampf-ton', v); if (this.master) this.master.gain.setTargetAtTime(v ? .5 : 0, this.ctx.currentTime, .05); },
+  f(n) { // Notenname -> Frequenz
+    const m = /^([A-G])(#?)(\d)$/.exec(n); if (!m) return 0;
+    const semi = { C: -9, D: -7, E: -5, F: -4, G: -2, A: 0, B: 2 }[m[1]] + (m[2] ? 1 : 0) + (m[3] - 4) * 12;
+    return 440 * Math.pow(2, semi / 12);
+  },
+  tone(t, freq, dur, wave, vol, slide, out) {
+    const c = this.ctx, o = c.createOscillator(), g = c.createGain();
+    if (wave === 'tri') o.type = 'triangle'; else o.setPeriodicWave(wave || this.w50);
+    o.frequency.setValueAtTime(freq, t); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, slide), t + dur);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .004); g.gain.setValueAtTime(vol * .8, t + dur * .6); g.gain.linearRampToValueAtTime(0, t + dur);
+    o.connect(g); g.connect(out || this.master); o.start(t); o.stop(t + dur + .02);
+  },
+  hiss(t, dur, vol, hp) {
+    const c = this.ctx, s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+    s.buffer = this.noise; f.type = 'highpass'; f.frequency.value = hp || 1500;
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+    s.connect(f); f.connect(g); g.connect(this.master); s.start(t, Math.random() * .5); s.stop(t + dur + .02);
+  },
+  /* ---------- Marsch (eigene Komposition): Melodie, Arpeggio, Bass, Trommel ---------- */
+  song() {
+    if (this._song) return this._song;
+    const mel = 'G4:2 G4:1 G4:1 C5:4 E5:4 G5:4|E5:3 C5:1 E5:4 G5:8|A5:2 G5:2 F5:2 E5:2 D5:4 G4:4|C5:8 r:4 G4:2 G4:2|C5:4 B4:2 A4:2 G4:4 E4:4|F4:2 A4:2 C5:4 A4:4 F4:4|G4:2 B4:2 D5:4 F5:4 D5:2 B4:2|C5:6 G4:2 C5:8|' +
+      'A4:4 C5:2 E5:2 A5:4 E5:4|F5:4 E5:2 D5:2 C5:4 A4:4|B4:2 C5:2 D5:4 G5:4 F5:2 D5:2|E5:8 E5:2 D5:2 C5:2 B4:2|A4:4 E5:4 A5:4 G5:2 F5:2|E5:2 F5:2 G5:4 C5:4 E5:4|D5:2 E5:2 F5:4 B4:4 D5:4|C5:12 r:4';
+    const chords = ['C', 'C', 'FG', 'C', 'C', 'F', 'G', 'C', 'Am', 'F', 'G', 'E', 'Am', 'C', 'G', 'C'];
+    const CH = { C: ['C', 'E', 'G'], F: ['F', 'A', 'C'], G: ['G', 'B', 'D'], Am: ['A', 'C', 'E'], E: ['E', 'G#', 'B'] };
+    const notes = []; let step = 0;
+    for (const tok of mel.replace(/\|/g, ' ').trim().split(/\s+/)) { const [n, l] = tok.split(':'); if (n !== 'r') notes.push([step, n, +l]); step += +l; }
+    this._song = { notes, chords, CH, steps: step };
+    return this._song;
+  },
+  startMusic() {
+    this.init(); if (!this.ctx || this.playing) return;
+    this.playing = true; const S = this.song(), bpm = 128, st = 60 / bpm / 4;
+    this.mus = this.ctx.createGain(); this.mus.gain.value = 1; this.mus.connect(this.master);
+    let t0 = this.ctx.currentTime + .1, next = 0;
+    const sched = () => {
+      if (!this.playing) return;
+      const c = this.ctx, horizon = c.currentTime + .25;
+      while (t0 + next * st < horizon) {
+        const s = next % S.steps, t = t0 + next * st, bar = Math.floor(s / 16), pos = s % 16;
+        for (const [at, n, l] of S.notes) if (at === s) this.tone(t, this.f(n), l * st * .92, this.w25, .16, 0, this.mus);
+        let ch = S.chords[bar]; if (ch.length === 2 && ch !== 'Am') ch = pos < 8 ? ch[0] : ch[1];
+        const tones = S.CH[ch], root = tones[0];
+        // Arpeggio in Sechzehnteln, leise
+        this.tone(t, this.f(tones[[0, 1, 2, 1][pos % 4]] + '4'), st * .8, this.w12, .045, 0, this.mus);
+        // Bass: Grundton und Quinte im Marschtakt
+        if (pos % 4 === 0) this.tone(t, this.f((pos % 8 === 0 ? root : tones[2]) + '2'), st * 3, 'tri', .28, 0, this.mus);
+        // Trommel: Pauke auf 1 und 3, kleine Trommel auf 2 und 4, Wirbel am Ende jeder vierten Zeile
+        if (pos === 0 || pos === 8) this.tone(t, 150, .12, 'tri', .5, 40, this.mus);
+        if (pos === 4 || pos === 12) this.hiss(t, .12, .22, 1200);
+        if (bar % 4 === 3 && pos >= 13) this.hiss(t, .06, .15, 1800);
+        if (pos % 2 === 1) this.hiss(t, .02, .04, 6000);
+        next++;
+      }
+      this.timer = setTimeout(sched, 50);
+    };
+    sched();
+  },
+  stopMusic() {
+    if (!this.playing) return; this.playing = false; clearTimeout(this.timer);
+    if (this.mus) { const g = this.mus; g.gain.setTargetAtTime(0, this.ctx.currentTime, .08); setTimeout(() => g.disconnect(), 600); }
+  },
+  /* ---------- Effekte ---------- */
+  play(n) {
+    if (!this.ctx || !this.on) return; const t = this.ctx.currentTime + .01, F = x => this.f(x);
+    const now = performance.now(); this._last = this._last || {}; if (now - (this._last[n] || 0) < 60) return; this._last[n] = now;
+    switch (n) {
+      case 'tap': this.tone(t, 880, .05, this.w25, .12); break;
+      case 'tick': this.tone(t, 1200 + Math.random() * 300, .025, this.w12, .05); break;
+      case 'charge': this.tone(t, F('C5'), .06, this.w25, .14); this.tone(t + .07, F('G5'), .1, this.w25, .14); break;
+      case 'build': this.tone(t, F('E5'), .08, this.w50, .14); this.tone(t + .09, F('C6'), .14, this.w50, .14); this.hiss(t, .05, .1, 3000); break;
+      case 'hit': this.tone(t, 220, .12, this.w50, .12, 90); break;
+      case 'alarm': for (let k = 0; k < 3; k++) { this.tone(t + k * .16, 660, .07, this.w50, .13); this.tone(t + k * .16 + .08, 440, .07, this.w50, .13); } break;
+      case 'pact': ['C5', 'E5', 'G5', 'C6'].forEach((x, k) => this.tone(t + k * .07, F(x), .2, this.w25, .12)); break;
+      case 'start': ['G4', 'C5', 'E5', 'G5'].forEach((x, k) => this.tone(t + k * .09, F(x), .12, this.w25, .14)); this.tone(t + .36, F('C6'), .35, this.w25, .14); break;
+      case 'fanfare': ['C5', 'C5', 'C5', 'G5'].forEach((x, k) => this.tone(t + k * .1, F(x), k === 3 ? .4 : .08, this.w25, .15)); break;
+      case 'boom': this.hiss(t, .5, .4, 200); this.tone(t, 90, .3, 'tri', .5, 30); break;
+      case 'type': this.tone(t, 1500, .015, this.w12, .04); break;
+      case 'win': { const m = ['C5:2', 'C5:1', 'C5:1', 'G5:4', 'E5:2', 'G5:2', 'C6:8']; let k = 0; for (const x of m) { const [nn, l] = x.split(':'); this.tone(t + k * .1, F(nn), l * .1, this.w25, .16); this.tone(t + k * .1, F(nn) / 2, l * .1, 'tri', .25); k += +l; } break; }
+      case 'lose': ['G4', 'F4', 'E4', 'D4', 'C4'].forEach((x, k) => this.tone(t + k * .22, F(x), .22, this.w50, .14)); this.tone(t + 1.1, F('C3'), .8, 'tri', .3); break;
+    }
+  },
+};
+
+/* ======================= Intro-Szene in 320 x 180 Pixeln ======================= */
+const Intro = {
+  W: 320, H: 180, t: 0, run: false, shots: [], booms: [],
+  init() {
+    const c = this.cv = $('#ic'); this.g = c.getContext('2d'); c.width = this.W; c.height = this.H; this.g.imageSmoothingEnabled = false;
+    const r = rng(1719);
+    const ridge = (y0, amp, rough, seed) => { const rr = rng(seed), pts = []; let y = y0; for (let x = 0; x <= this.W; x += 4) { y += (rr() - .5) * rough; y = clamp(y, y0 - amp, y0 + amp * .3); pts.push(y); } return pts; };
+    this.far = ridge(92, 34, 10, 7); this.near = ridge(118, 24, 7, 11);
+    this.stars = Array.from({ length: 70 }, () => [Math.floor(r() * this.W), Math.floor(r() * 90), r()]);
+    this.soldiers = Array.from({ length: 14 }, (_, k) => k * 26);
+    this.resize(); addEventListener('resize', () => this.resize());
+  },
+  resize() { const c = this.cv, box = $('#intro'), w = box.clientWidth || innerWidth, h = box.clientHeight || innerHeight, s = Math.max(w / this.W, Math.min(h / this.H, w / 170)); c.style.width = this.W * s + 'px'; c.style.height = this.H * s + 'px'; c.style.left = clamp(w / 2 - 190 * s, w - this.W * s, 0) + 'px'; c.style.top = Math.min(0, (h - this.H * s) / 2) + 'px'; box.style.background = this.H * s < h ? 'linear-gradient(#000 0,#000 ' + this.H * s + 'px,#1a2414 ' + this.H * s + 'px)' : '#000'; },
+  start() { if (this.run) return; this.run = true; let last = performance.now(); const loop = t => { if (!this.run) return; this.t += Math.min(.05, (t - last) / 1000); last = t; this.draw(); requestAnimationFrame(loop); }; requestAnimationFrame(loop); },
+  stop() { this.run = false; },
+  px(x, y, w, h, c) { this.g.fillStyle = c; this.g.fillRect(Math.round(x), Math.round(y), w, h); },
+  draw() {
+    const g = this.g, W = this.W, H = this.H, t = this.t;
+    // Himmel in Bändern mit Rasterübergang (Dithering)
+    const bands = ['#0a0c22', '#13153a', '#24204e', '#3e2a5c', '#6a3658', '#a24a4a', '#d9734a'];
+    const bh = 14;
+    for (let i = 0; i < bands.length; i++) { this.px(0, i * bh, W, bh, bands[i]); if (i < bands.length - 1) { g.fillStyle = bands[i + 1]; for (let x = (i % 2); x < W; x += 2) g.fillRect(x, i * bh + bh - 2, 1, 1); for (let x = 0; x < W; x += 2) g.fillRect(x + 1, i * bh + bh - 1, 1, 1); } }
+    this.px(0, bands.length * bh, W, H, '#d9734a');
+    for (const [x, y, p] of this.stars) if (y < 70 && Math.sin(t * 3 + p * 20) > -.6) this.px(x, y, 1, 1, p > .8 ? '#fff' : '#9aa0d0');
+    // Mond
+    this.px(262, 18, 10, 10, '#f2e6b0'); this.px(260, 20, 14, 6, '#f2e6b0'); this.px(266, 18, 6, 4, '#13153a');
+    // Berge
+    const ridge = (pts, col, snow) => { for (let i = 0; i < pts.length - 1; i++) { const x = i * 4, y = Math.round(pts[i]); this.px(x, y, 4, H - y, col); if (snow && y < 70) this.px(x, y, 4, 3, '#dfe4f0'); } };
+    ridge(this.far, '#3b3550', true); ridge(this.near, '#232a2a', false);
+    // Talboden mit Rhein
+    this.px(0, 140, W, 40, '#1a2414'); this.px(0, 146, W, 2, '#2c4a6a'); for (let x = (Math.floor(t * 20) % 6); x < W; x += 6) this.px(x, 146, 2, 1, '#5a86b0');
+    // Burg auf dem Hügel rechts
+    const bx = 214, by = 96; const stone = '#4a4650', dark = '#2c2a32';
+    for (let k = 0; k < 18; k++) this.px(bx - 30 + k * 6, by + 30 - Math.round(Math.sin(k / 17 * Math.PI) * 14), 6, 30, '#1c2618');
+    this.px(bx, by, 52, 26, stone); this.px(bx + 4, by - 18, 14, 18, stone); this.px(bx + 36, by - 10, 12, 10, stone);
+    for (let k = 0; k < 7; k++) this.px(bx + k * 8, by - 3, 4, 3, stone);
+    for (let k = 0; k < 3; k++) this.px(bx + 4 + k * 5, by - 21, 3, 3, stone);
+    this.px(bx + 22, by + 14, 8, 12, dark); this.px(bx + 8, by - 10, 3, 4, '#f2c84a'); this.px(bx + 40, by - 4, 3, 3, '#f2c84a'); this.px(bx + 34, by + 8, 3, 4, '#f2c84a');
+    // Fahne blau/rot, weht
+    this.px(bx + 10, by - 34, 1, 14, '#bbb'); const wv = Math.floor(t * 4) % 2;
+    this.px(bx + 11, by - 34, 10, 3, '#2a4aa8'); this.px(bx + 11, by - 31, 10, 3, '#c41f3a'); if (wv) { this.px(bx + 21, by - 33, 2, 3, '#2a4aa8'); this.px(bx + 21, by - 30, 2, 2, '#c41f3a'); }
+    // Suchscheinwerfer
+    const a = Math.sin(t * .8) * .7 - Math.PI / 2; g.fillStyle = 'rgba(255,240,180,.08)'; g.beginPath(); g.moveTo(bx + 11, by - 18); g.lineTo(bx + 11 + Math.cos(a - .08) * 200, by - 18 + Math.sin(a - .08) * 200); g.lineTo(bx + 11 + Math.cos(a + .08) * 200, by - 18 + Math.sin(a + .08) * 200); g.fill();
+    // Kanone links feuert auf die Burg
+    const cx = 44, cy = 128; this.px(cx - 8, cy + 4, 18, 5, '#3a2a1a'); this.px(cx - 4, cy + 8, 5, 5, '#1a1208'); this.px(cx + 5, cy + 8, 5, 5, '#1a1208'); this.px(cx, cy, 16, 4, '#555');
+    if (!this.nextShot || t > this.nextShot) { this.nextShot = t + 2.6 + Math.random() * 1.5; this.shots.push({ x: cx + 16, y: cy + 1, vx: 70 + Math.random() * 15, vy: -62, t0: t }); this.flash = t; if (this.sound) Snd.play('boom'); }
+    if (this.flash && t - this.flash < .12) { this.px(cx + 16, cy - 2, 6, 6, '#ffe070'); this.px(cx + 19, cy - 4, 4, 10, '#ff9a3a'); }
+    for (const s of this.shots) { const dt = t - s.t0, x = s.x + s.vx * dt, y = s.y + s.vy * dt + 30 * dt * dt; if (x > bx - 4 || y > 140) { s.dead = true; this.booms.push({ x, y, t0: t }); continue; } this.px(x, y, 2, 2, '#111'); }
+    this.shots = this.shots.filter(s => !s.dead);
+    for (const b of this.booms) { const dt = t - b.t0; if (dt > .6) { b.dead = true; continue; } const r = Math.round(dt * 18); for (let k = 0; k < 10; k++) { const an = k / 10 * Math.PI * 2; this.px(b.x + Math.cos(an) * r, b.y + Math.sin(an) * r, 2, 2, dt < .2 ? '#ffe070' : dt < .4 ? '#ff7a2a' : '#555'); } }
+    this.booms = this.booms.filter(b => !b.dead);
+    // marschierende Soldaten
+    const step = Math.floor(t * 6) % 2;
+    for (let k = 0; k < this.soldiers.length; k++) {
+      const x = ((this.soldiers[k] + t * 14) % (W + 30)) - 20, y = 160;
+      this.px(x + 1, y, 3, 2, '#3a4a22'); this.px(x + 1, y + 2, 3, 2, '#e0b890'); this.px(x, y + 4, 5, 5, '#4a5a2a'); this.px(x + 4, y + 1, 1, 7, '#222');
+      this.px(x + (step ? 0 : 1), y + 9, 2, 3, '#2a2a1a'); this.px(x + (step ? 3 : 2), y + 9, 2, 3, '#2a2a1a');
+    }
+    // Vignette oben und unten
+    this.px(0, 0, W, 2, '#000'); this.px(0, H - 2, W, 2, '#000');
+  },
+};
+
+/* ======================= Highscore ======================= */
+const HS = {
+  key: 'kampf-highscore',
+  list() { return store.get(this.key) || []; },
+  qualifies(s) { const l = this.list(); return s > 0 && (l.length < 10 || s > l[l.length - 1].s); },
+  add(e) { const l = this.list(); l.push(e); l.sort((a, b) => b.s - a.s); store.set(this.key, l.slice(0, 10)); return l.indexOf(e); },
+  table(hi) {
+    const l = this.list(); if (!l.length) return '<p>Noch keine Einträge. Sei der Erste!</p>';
+    return `<table class="hs"><tr><th>#</th><th>NAME</th><th>GEMEINDE</th><th></th><th style="text-align:right">PUNKTE</th></tr>${l.map((e, k) => `<tr class="${k === hi ? 'new' : ''}"><td>${k + 1}.</td><td class="n">${esc(e.n)}</td><td><i style="background:${esc(e.c)}"></i>${esc(e.g)}</td><td>${e.w ? '🏆' : ''}</td><td class="s">${e.s.toLocaleString('de-CH')}</td></tr>`).join('')}</table>`;
+  },
+};
+
+/* ======================= Menü und Ablauf ======================= */
+const Kampf = {
+  menuIdx: 0,
+  boot() {
+    Intro.init();
+    const relief = new Image(); relief.src = 'data/relief.png'; window.KAMPF_RELIEF = relief;
+    War.labelFont = '"VT323", monospace';
+    this.ready = Tiles.init().then(ok => ok ? Density.load() : null);
+    $('#press').onclick = () => this.intro();
+    addEventListener('keydown', e => {
+      if (!$('#press').hidden && (e.key === 'Enter' || e.key === ' ')) { this.intro(); return; }
+      if ($('#menu').hidden || !$('#panel').hidden) { if (e.key === 'Escape' && !$('#panel').hidden) this.closePanel(); return; }
+      const items = [...document.querySelectorAll('#menu .mi')];
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); this.menuIdx = (this.menuIdx + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length; this.markMenu(); Snd.play('tap'); }
+      if (e.key === 'Enter') items[this.menuIdx].click();
+    });
+    document.querySelectorAll('#menu .mi').forEach((b, k) => { b.onclick = () => { Snd.play('tap'); this.menuIdx = k; this.markMenu(); this.action(b.dataset.m); }; b.onmouseenter = () => { this.menuIdx = k; this.markMenu(); }; });
+    this.markMenu(); this.updSnd();
+    War.onExit = () => this.toMenu();
+    War.onEnd = r => this.endScreen(r);
+  },
+  intro() {
+    $('#press').hidden = true; Snd.init(); Intro.sound = Snd.on; Intro.start(); Snd.startMusic();
+    const skip = () => { if (this.skipped) return; this.skipped = true; clearTimeout(this.tm); this.showMenu(); };
+    $('#intro').addEventListener('pointerdown', e => { if (!$('#menu').hidden) return; skip(); }, { once: false });
+    this.tm = setTimeout(() => { $('#titleTxt').hidden = false; $('#titleTxt').classList.add('drop'); setTimeout(() => Snd.play('boom'), 900); }, 600);
+    const lines = ['ANNO 2026.', 'ELF GEMEINDEN. EIN LAND.', 'NUR EINE WIRD HERRSCHEN.'];
+    let li = 0, ci = 0, txt = '';
+    const type = () => {
+      if (this.skipped) return;
+      if (li >= lines.length) { this.tm = setTimeout(skip, 1400); return; }
+      txt += lines[li][ci] || ''; ci++; $('#story').innerHTML = esc(txt).replace(/\n/g, '<br>') + '<span style="animation:blink .5s steps(1) infinite">█</span>';
+      if (lines[li][ci - 1] !== ' ') Snd.play('type');
+      if (ci >= lines[li].length) { li++; ci = 0; txt += '\n'; this.tm = setTimeout(type, 650); } else this.tm = setTimeout(type, 70);
+    };
+    setTimeout(() => { if (!this.skipped) type(); }, 2200);
+  },
+  showMenu() {
+    $('#titleTxt').hidden = false; $('#titleTxt').classList.remove('drop'); $('#story').innerHTML = ''; $('#menu').hidden = false; this.markMenu();
+  },
+  markMenu() { document.querySelectorAll('#menu .mi').forEach((b, k) => b.classList.toggle('on', k === this.menuIdx)); },
+  updSnd() { $('#menu [data-m="snd"]').textContent = 'TON: ' + (Snd.on ? 'AN' : 'AUS'); },
+  action(m) {
+    if (m === 'new') this.newGame();
+    else if (m === 'snd') { Snd.setOn(!Snd.on); Intro.sound = Snd.on; if (Snd.on) Snd.startMusic(); this.updSnd(); }
+    else if (m === 'home') location.href = 'index.html';
+    else if (m === 'hs') this.panel(`<h2>HIGHSCORE</h2>${HS.table(-1)}<div class="trow" style="margin-top:16px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`);
+    else if (m === 'tut') this.panel(`<h2>ANLEITUNG</h2>${War.tutSteps().map(s => `<h3>${esc(s.t.toUpperCase())}</h3><p>${s.b}</p>`).join('')}<div class="trow" style="margin-top:16px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`);
+  },
+  panel(html) { const p = $('#panel'); p.innerHTML = html; p.hidden = false; $('#menu').hidden = true; $('#pClose').onclick = () => { Snd.play('tap'); this.closePanel(); }; },
+  closePanel() { $('#panel').hidden = true; $('#menu').hidden = false; },
+  async newGame() {
+    $('#menu').hidden = true; $('#story').textContent = 'LADE LANDESKARTE …';
+    await this.ready;
+    Snd.stopMusic(); Intro.stop(); $('#intro').hidden = true; $('#story').textContent = '';
+    War.open();
+  },
+  toMenu() { $('#modal').hidden = true; $('#intro').hidden = false; Intro.start(); Snd.startMusic(); this.showMenu(); },
+  endScreen(r) {
+    const m = $('#modal'); m.hidden = false;
+    const q = HS.qualifies(r.total);
+    const head = r.win ? `<h2 class="win">SIEG!<br>${esc(r.gem.toUpperCase())} HERRSCHT</h2>` : r.winner ? `<h2 class="lose">NIEDERLAGE<br>${esc(r.winner.name.toUpperCase())} HERRSCHT</h2>` : `<h2 class="lose">${esc(r.gem.toUpperCase())}<br>IST GEFALLEN</h2>`;
+    const body = `<div class="sc"><span>Land</span><b>${r.land} %</b><span>Zeit</span><b>${r.min} min</b><span>Eroberungen</span><b>${r.base.toLocaleString('de-CH')}</b>${r.bonus ? `<span>Siegbonus</span><b>${r.bonus.toLocaleString('de-CH')}</b>` : ''}<span>Gemeinde-Faktor</span><b>×${r.factor}</b><span class="tot">PUNKTE</span><b class="tot">${r.total.toLocaleString('de-CH')}</b></div>`;
+    const buttons = `<div class="trow"><button class="px-btn red" id="eAgain">NOCHMAL</button><button class="px-btn ghost" id="eMenu">MENÜ</button>${r.win ? '<button class="px-btn ghost" id="eCont">WEITERSPIELEN</button>' : ''}</div>`;
+    m.innerHTML = `<div class="mcard px">${head}${body}<div id="eHs">${q ? `<div class="ini">NEUER HIGHSCORE! NAME <input id="eName" maxlength="3" autocomplete="off" value="${esc(store.get('kampf-name') || '')}"><button class="px-btn" id="eSave">OK</button></div>` : HS.table(-1)}</div>${buttons}</div>`;
+    const bind = () => {
+      $('#eAgain').onclick = () => { Snd.play('tap'); m.hidden = true; War.choose(); };
+      $('#eMenu').onclick = () => { Snd.play('tap'); m.hidden = true; War.exit(); };
+      if (r.win) $('#eCont').onclick = () => { Snd.play('tap'); m.hidden = true; War.continueAfterWin(); };
+    };
+    bind();
+    if (q) {
+      const inp = $('#eName'); setTimeout(() => inp.focus(), 50);
+      const save = () => { const n = (inp.value || 'AAA').toUpperCase().replace(/[^A-ZÄÖÜ0-9]/g, '').slice(0, 3) || 'AAA'; store.set('kampf-name', n);
+        const e = { n, g: r.gem, c: r.color, s: r.total, w: r.win, m: r.min, d: new Date().toISOString().slice(0, 10) }; const k = HS.add(e); Snd.play('pact'); $('#eHs').innerHTML = HS.table(k); };
+      $('#eSave').onclick = save; inp.onkeydown = e => { if (e.key === 'Enter') save(); };
+    }
+  },
+};
+addEventListener('DOMContentLoaded', () => Kampf.boot());
