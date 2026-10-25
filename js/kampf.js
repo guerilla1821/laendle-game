@@ -331,7 +331,7 @@ const Kampf = {
   async endScreen(r) {
     const m = $('#modal'); m.hidden = false;
     const head = r.win ? `<h2 class="win">SIEG!<br>${esc(r.gem.toUpperCase())} HERRSCHT</h2>` : r.winner ? `<h2 class="lose">NIEDERLAGE<br>${esc(r.winner.name.toUpperCase())} HERRSCHT</h2>` : `<h2 class="lose">${esc(r.gem.toUpperCase())}<br>IST GEFALLEN</h2>`;
-    const body = `<div class="sc"><span>LAND</span><b>${r.land} %</b><span>ZEIT</span><b>${r.min} MIN</b><span>EROBERUNGEN</span><b>${r.base.toLocaleString('de-CH')}</b>${r.bonus ? `<span>SIEGBONUS</span><b>${r.bonus.toLocaleString('de-CH')}</b>` : ''}<span>GEMEINDE-FAKTOR</span><b>X${r.factor}</b><span class="tot">PUNKTE</span><b class="tot">${r.total.toLocaleString('de-CH')}</b></div>`;
+    const body = `<div class="sc"><span>LAND</span><b>${r.land} %</b><span>ZEIT</span><b>${r.min} MIN</b><span>EROBERUNGEN</span><b>${r.base.toLocaleString('de-CH')}</b>${r.bonus ? `<span>SIEGBONUS</span><b>${r.bonus.toLocaleString('de-CH')}</b>` : ''}<span>GEMEINDE-FAKTOR</span><b>X${r.factor}</b>${r.level ? `<span>SCHWIERIGKEIT ${r.level.name}</span><b>X${r.level.score}</b>` : ''}<span class="tot">PUNKTE</span><b class="tot">${r.total.toLocaleString('de-CH')}</b></div>`;
     const buttons = `<div class="trow"><button class="px-btn red" id="eAgain">NOCHMAL</button><button class="px-btn" id="eMenu">MENÜ</button>${r.win ? '<button class="px-btn" id="eCont">WEITER</button>' : ''}</div>`;
     m.innerHTML = `<div class="mcard px">${head}${body}<div id="eHs"><p>LADE HIGHSCORE...</p></div>${buttons}</div>`;
     $('#eAgain').onclick = () => { Snd.play('tap'); m.hidden = true; War.choose(); };

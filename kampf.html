@@ -123,6 +123,11 @@ img.spr{image-rendering:pixelated;image-rendering:crisp-edges;vertical-align:mid
 #wTut p{margin:0 0 14px;font-size:9px;line-height:2}#wTut .tn{font-size:8px;color:var(--dim)}
 .tutHi{outline:2px solid var(--hi)!important;outline-offset:6px;position:relative;z-index:5;animation:hi .5s steps(1) infinite}
 @keyframes hi{50%{outline-color:var(--red)}}
+#wBanner{position:absolute;left:0;right:0;top:38%;text-align:center;font-size:clamp(18px,6vw,44px);line-height:1.2;pointer-events:none;z-index:7;text-shadow:4px 4px 0 #000,-2px -2px 0 #000;letter-spacing:2px}
+#wBanner.go{animation:bn 2.6s steps(12) forwards}
+@keyframes bn{0%{transform:scale(3);opacity:0}15%{transform:scale(1);opacity:1}25%{opacity:.2}35%{opacity:1}80%{opacity:1}100%{opacity:0}}
+.wlvl{display:flex;gap:10px;padding:2px;flex-wrap:wrap}.wlvl button{border:0;background:#000;color:var(--dim);font-size:8px;padding:6px 8px;box-shadow:0 0 0 2px var(--panel2)}
+.wlvl button[aria-pressed="true"]{color:#000;background:var(--hi);box-shadow:0 0 0 2px var(--hi)}
 #modal{position:absolute;inset:0;background:rgba(0,0,0,.6);display:grid;place-items:center;z-index:30;padding:18px}
 .mcard{width:min(540px,100%);max-height:calc(100% - 36px);overflow:auto;padding:22px 18px 16px;display:flex;flex-direction:column;gap:14px}
 .mcard h2{margin:0;font-size:14px;line-height:1.7;font-weight:400}
@@ -147,7 +152,7 @@ img.spr{image-rendering:pixelated;image-rendering:crisp-edges;vertical-align:mid
   #menu button.mi{font-size:9px}
   .hs{font-size:8px}.hs td,.hs th{padding:4px 2px}
 }
-@media(max-width:400px){#wHud{gap:5px}#wHud img.spr{width:10px;height:10px}#wHud .wst{font-size:7px}#wGrow{font-size:6px}}
+@media(max-width:400px){#wHud{gap:3px;padding:5px 4px}#wHud .tbtn{padding:0 5px}#wHud img.spr{width:10px;height:10px}#wHud .wst{font-size:7px}#wGrow{font-size:6px}}
 @media(max-height:520px){
   #wTut,#wTut.top,#wTut.bottom{left:12px;transform:none;width:min(46%,420px);top:calc(var(--th,54px) + 14px);bottom:calc(var(--bh,90px) + 14px);max-height:none}
   #titleTxt{width:50%;top:8%}#titleTxt .t2{font-size:22px}
@@ -197,6 +202,7 @@ img.spr{image-rendering:pixelated;image-rendering:crisp-edges;vertical-align:mid
   <div id="wBoard" class="px" hidden></div>
   <div id="wFeed"></div>
   <div id="wTut" hidden></div>
+  <div id="wBanner" hidden></div>
   <div id="wBottom" class="px" hidden>
     <label class="wr"><span>ANGRIFF <b id="wRatioV">30 %</b></span><input type="range" id="wRatio" min="5" max="100" step="5" value="30"></label>
     <div id="wBuild">
