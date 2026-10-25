@@ -52,7 +52,20 @@ img.spr{image-rendering:pixelated;image-rendering:crisp-edges;vertical-align:mid
 #panel h2{font-size:14px;color:var(--hi);margin:0 0 16px;font-weight:400}
 #panel h3{font-size:10px;color:var(--blue);margin:18px 0 6px;font-weight:400}
 #panel p{margin:0;font-size:9px;line-height:1.9}
-#panel a{color:var(--blue)}#panel .cr p{margin-bottom:8px}#panel .cr b{color:var(--hi);font-weight:400}
+#panel a{color:var(--blue)}
+.gsub{margin-bottom:12px!important}
+.ggrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;padding:4px}
+.gcard{display:flex;flex-direction:column;align-items:center;gap:6px;border:0;background:#000;padding:10px 6px;box-shadow:0 0 0 2px var(--c)}
+.gcard:hover,.gcard:focus-visible{background:var(--panel2);outline:none}
+.gcard .gn{font-size:9px;color:var(--c)}.gcard .gl{font-size:7px;color:var(--dim);text-align:center;line-height:1.6}
+.ghead{display:flex;gap:16px;align-items:flex-start;margin-bottom:6px}.ghead img{flex:none;box-shadow:0 0 0 2px #000,0 0 0 4px var(--frame)}
+.ghead h2{margin:4px 0 4px!important;font-size:12px!important;line-height:1.6}.ghead .gn{font-size:10px}.gt{font-size:8px;color:var(--dim)}
+.gq{color:var(--text);margin-top:8px!important;font-size:8px!important}
+#panel ul{margin:0;padding-left:16px;font-size:9px;line-height:1.9}
+.gst{display:grid;grid-template-columns:auto auto 1fr;gap:6px 10px;align-items:center;font-size:8px}.gst b{font-weight:400;color:var(--hi);text-align:right}
+.bar{display:inline-flex;gap:2px}.bar i{width:10px;height:10px;background:#1d2b53}.bar i.on{background:var(--hi)}
+.gname{font-size:7px!important;color:var(--dim);margin-top:10px!important}
+@media(max-width:520px){.ghead{flex-direction:column;align-items:center;text-align:center}.ggrid{grid-template-columns:repeat(2,1fr)}.gst{grid-template-columns:1fr auto;}.gst .bar{display:none}}#panel .cr p{margin-bottom:8px}#panel .cr b{color:var(--hi);font-weight:400}
 .hs{width:100%;border-collapse:collapse;font-size:9px}
 .hs td,.hs th{padding:5px 4px;text-align:left;white-space:nowrap}.hs th{font-size:8px;color:var(--dim);font-weight:400}
 .hs td.n{color:var(--hi)}.hs td.s{text-align:right}
@@ -69,7 +82,7 @@ img.spr{image-rendering:pixelated;image-rendering:crisp-edges;vertical-align:mid
 #wChoose{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);padding:14px;display:flex;flex-direction:column;gap:10px;width:min(660px,calc(100% - 36px))}
 #wChoose b{font-size:11px;color:var(--hi);font-weight:400}#wChoose span{color:var(--dim);font-size:8px}
 .wgems{display:flex;flex-wrap:wrap;gap:10px;padding:2px}
-.wgems button{border:0;background:#000;color:var(--text);padding:7px 8px;font-size:8px;box-shadow:0 0 0 2px var(--c)}
+.wgems button{border:0;background:#000;color:var(--text);padding:5px 8px 5px 5px;font-size:8px;box-shadow:0 0 0 2px var(--c);display:flex;align-items:center;gap:6px}
 .wgems button:hover{background:var(--c);color:#000}
 #wHud{position:absolute;top:12px;left:12px;right:12px;display:flex;align-items:center;gap:16px;padding:6px 10px;flex-wrap:nowrap}
 #wHud .wst{white-space:nowrap;font-size:10px;display:flex;align-items:center;gap:6px}#wHud .wst b{font-weight:400}
@@ -151,6 +164,7 @@ img.spr{image-rendering:pixelated;image-rendering:crisp-edges;vertical-align:mid
   <div id="story"></div>
   <div id="menu" class="px" hidden>
     <button class="mi" data-m="new">NEUES SPIEL</button>
+    <button class="mi" data-m="gem">DIE GEMEINDEN</button>
     <button class="mi" data-m="tut">ANLEITUNG</button>
     <button class="mi" data-m="hs">HIGHSCORE</button>
     <button class="mi" data-m="credits">CREDITS</button>
@@ -198,6 +212,7 @@ img.spr{image-rendering:pixelated;image-rendering:crisp-edges;vertical-align:mid
 <script src="js/config.js?v=dev"></script>
 <script src="js/data.js?v=dev"></script>
 <script src="js/sprites.js?v=dev"></script>
+<script src="js/gemeinden.js?v=dev"></script>
 <script src="js/kampf.js?v=dev"></script>
 <script src="js/war.js?v=dev"></script>
 <script src="js/war3d.js?v=dev"></script>

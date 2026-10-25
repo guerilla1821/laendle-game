@@ -183,14 +183,32 @@ const War = {
   choose() {
     const M = this.map; this.phase = 'choose'; this.owner = new Uint8Array(M.N); this.buildings = []; this.attacks = []; this.feed = [];
     this.players = M.names.map((n, k) => ({ id: k + 1, name: n, color: WAR_COLORS[k + 1], troops: 0, gold: 120, cells: 0, pers: 0, jobs: 0, alive: true, bot: true, nextAi: 0, lx: 0, ly: 0 }));
-    // Startpunkt je Gemeinde: dichtester bewohnter Ort
-    const best = this.players.map(() => ({ v: -1, i: -1 })), sum = this.players.map(() => [0, 0, 0]);
-    for (let i = 0; i < M.N; i++) { const g = M.gem[i]; if (!g || M.cost[i] === Infinity) continue; const v = M.pers[i] * 3 + M.jobs[i] + (M.boden[i] & 32 ? .2 : 0); const s = sum[g - 1]; s[0] += i % M.w; s[1] += Math.floor(i / M.w); s[2]++; if (v > best[g - 1].v) best[g - 1] = { v, i }; }
-    this.players.forEach((p, k) => { const b = best[k].i >= 0 ? best[k].i : Math.round(sum[k][1] / sum[k][2]) * M.w + Math.round(sum[k][0] / sum[k][2]); p.start = b; p.lx = b % M.w; p.ly = Math.floor(b / M.w); });
+    this.players.forEach((p, k) => { const b = this.startPoints()[k]; p.start = b; p.lx = b % M.w; p.ly = Math.floor(b / M.w); });
     this.cam.tilt = 0; this.cam.yaw = 0; this.update3D(); this.fit(); this.fullRepaint();
     $('#wHud').hidden = true; $('#wBottom').hidden = true; $('#wBoard').hidden = true; $('#wFeed').innerHTML = ''; $('#wChoose').hidden = false;
-    $('#wChoose').innerHTML = `<b>Wähle deine Gemeinde</b><span>Tippe auf die Karte oder hier:</span><div class="wgems">${this.players.map(p => `<button data-g="${p.id}" style="--c:${p.color}">${esc(p.name)}</button>`).join('')}</div>`;
+    $('#wChoose').innerHTML = `<b>Wähle deine Gemeinde</b><span>Tippe auf die Karte oder hier. Wer wer ist, steht im Menü unter DIE GEMEINDEN.</span><div class="wgems">${this.players.map(p => `<button data-g="${p.id}" style="--c:${p.color}">${window.GEM_INFO && GEM_INFO[p.name] ? Spr.portraitImg(GEM_INFO[p.name].avatar, 1, '') : ''}${esc(p.name)}</button>`).join('')}</div>`;
     $('#wChoose').querySelectorAll('button').forEach(b => b.onclick = () => this.startGame(+b.dataset.g));
+  },
+  // Startpunkt je Gemeinde: dichtester bewohnter Ort (Index je Gemeinde 1..11, Rückgabe nach Gemeinde-Reihenfolge)
+  startPoints() {
+    const M = this.map; if (this._sp) return this._sp; const n = M.names.length;
+    const best = Array.from({ length: n }, () => ({ v: -1, i: -1 })), sum = Array.from({ length: n }, () => [0, 0, 0]);
+    for (let i = 0; i < M.N; i++) { const g = M.gem[i]; if (!g || M.cost[i] === Infinity) continue; const v = M.pers[i] * 3 + M.jobs[i] + (M.boden[i] & 32 ? .2 : 0); const s = sum[g - 1]; s[0] += i % M.w; s[1] += Math.floor(i / M.w); s[2]++; if (v > best[g - 1].v) best[g - 1] = { v, i }; }
+    return (this._sp = best.map((b, k) => b.i >= 0 ? b.i : Math.round(sum[k][1] / sum[k][2]) * M.w + Math.round(sum[k][0] / sum[k][2])));
+  },
+  // Kennzahlen je Gemeinde aus den echten Daten (für das Menü DIE GEMEINDEN und den Punktefaktor)
+  gemStats() {
+    if (this._gs) return this._gs; const M = this.map, n = M.names.length, R = 14, sp = this.startPoints();
+    const st = M.names.map((name, k) => ({ id: k + 1, name, cells: 0, pers: 0, jobs: 0, cost: 0, alp: 0, wald: 0, start: { cells: 0, pers: 0, jobs: 0 } }));
+    for (let i = 0; i < M.N; i++) { const g = M.gem[i]; if (!g || M.cost[i] === Infinity) continue; const q = st[g - 1]; q.cells++; q.pers += M.pers[i]; q.jobs += M.jobs[i]; q.cost += M.cost[i]; if (M.hoehe[i] > 1200) q.alp++; if ((M.boden[i] & 15) === 3) q.wald++; }
+    st.forEach((q, k) => {
+      const sx = sp[k] % M.w, sy = Math.floor(sp[k] / M.w);
+      for (let y = sy - R; y <= sy + R; y++) for (let x = sx - R; x <= sx + R; x++) { if (x < 0 || y < 0 || x >= M.w || y >= M.h || (x - sx) ** 2 + (y - sy) ** 2 > R * R) continue; const i = y * M.w + x; if (M.gem[i] === q.id && M.cost[i] !== Infinity) { q.start.cells++; q.start.pers += M.pers[i]; q.start.jobs += M.jobs[i]; } }
+      q.cost /= Math.max(1, q.cells); q.startMax = Math.round(800 + q.start.cells * 1.5 + q.start.pers * 6 + q.start.jobs * 2);
+    });
+    const avgT = st.reduce((s, q) => s + q.cost, 0) / n, avgM = st.reduce((s, q) => s + q.startMax, 0) / n;
+    st.forEach(q => { q.factor = Math.round(clamp(Math.sqrt(avgM / q.startMax) * (q.cost / avgT), 1, 3) * 10) / 10; });
+    return (this._gs = st);
   },
   startGame(gid) {
     const M = this.map; this.me = this.players[gid - 1]; this.me.bot = false;
@@ -210,15 +228,13 @@ const War = {
     this.cam.x = this.me.lx; this.cam.y = this.me.ly; this.cam.s = Math.max(this.cam.s, Math.min(this.W, this.H) / 140); this.clampCam();
     this.log(`Du führst ${this.me.name}. Tippe auf neutrales Land, um dich auszubreiten.`);
     // Faktor: schwache Startgemeinden (wenig Truppen, steiles Gelände) geben mehr Punkte
-    const M2 = this.map, cs = new Float64Array(this.players.length + 1), cn = new Float64Array(this.players.length + 1);
-    for (let i = 0; i < M2.N; i++) { const g = M2.gem[i]; if (g && M2.cost[i] !== Infinity) { cs[g] += M2.cost[i]; cn[g]++; } }
-    const terr = p => cs[p.id] / Math.max(1, cn[p.id]), avgT = this.players.reduce((s, p) => s + terr(p), 0) / this.players.length;
-    const avg = this.players.reduce((s, p) => s + this.maxTroops(p), 0) / this.players.length;
-    this.factor = Math.round(clamp(Math.sqrt(avg / this.maxTroops(this.me)) * (terr(this.me) / avgT), 1, 3) * 10) / 10;
+    this.factor = this.gemStats()[gid - 1].factor;
     this.labels(); this.updateHud(); this.layout(); snd('start');
     if (!store.get('laendle-kampf-tut')) this.tutorial(0);
   },
 
+  // Kurzname des Oberhaupts für Meldungen
+  boss(p) { const g = window.GEM_INFO && GEM_INFO[p.name]; return g ? `${g.short} (${p.name})` : p.name; },
   /* ---------- Regeln ---------- */
   maxTroops(p) { return Math.round(800 + p.cells * 1.5 + p.pers * 6 + p.jobs * 2 + this.count(p, 'siedlung') * 1500); },
   count(p, type) { let n = 0; for (const b of this.buildings) if (b.owner === p.id && b.type === type) n++; return n; },
@@ -254,7 +270,7 @@ const War = {
       if (!cand.length) return false;
       a = { att: pid, def: target, troops: 0, cand, inSet, tx, ty };
       this.attacks.push(a);
-      if (target && this.players[target - 1] === this.me) { this.log(`${p.name} greift dich an!`, 'bad'); snd('alarm'); }
+      if (target && this.players[target - 1] === this.me) { this.log(`${this.boss(p)} greift dich an!`, 'bad'); snd('alarm'); }
     }
     a.tx = tx; a.ty = ty; a.troops += troops; p.troops -= troops;
     return true;
@@ -475,7 +491,7 @@ const War = {
   offer(from, to) {
     const w = this.willing(to, from);
     if (Math.random() < w) { this.makePact(from, to); snd('pact'); }
-    else { this.refused[to.id] = this.t + 40; this.log(`${to.name} lehnt dein Bündnis ab.`); }
+    else { this.refused[to.id] = this.t + 40; this.log(`${this.boss(to)} lehnt dein Bündnis ab.`); }
   },
   breakPact(a, b, betray) {
     this.pacts.delete(this.pk(a.id, b.id));
@@ -500,7 +516,7 @@ const War = {
     cand.sort((u, v) => v[2] - u[2]);
     const pick = cand.find(c => c[2] > .35 && Math.random() < .7); if (!pick) return;
     const [x, y] = pick;
-    if (y === me) this.ask(`${x.name} bietet dir ein Bündnis an (${PACT_TIME / 60} Minuten).`, 'Annehmen', () => { if (x.alive && !this.allied(x.id, me.id)) this.makePact(x, me); });
+    if (y === me) this.ask(`${this.boss(x)} bietet dir ein Bündnis an (${PACT_TIME / 60} Minuten).`, 'Annehmen', () => { if (x.alive && !this.allied(x.id, me.id)) this.makePact(x, me); });
     else this.makePact(x, y);
   },
   ask(msg, label, fn) {
