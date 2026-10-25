@@ -121,7 +121,14 @@ const Intro = {
     this.soldiers = Array.from({ length: 14 }, (_, k) => k * 26);
     this.resize(); addEventListener('resize', () => this.resize());
   },
-  resize() { const c = this.cv, box = $('#intro'), w = box.clientWidth || innerWidth, h = box.clientHeight || innerHeight, s = Math.max(w / this.W, Math.min(h / this.H, w / 170)); c.style.width = this.W * s + 'px'; c.style.height = this.H * s + 'px'; c.style.left = clamp(w / 2 - 190 * s, w - this.W * s, 0) + 'px'; c.style.top = Math.min(0, (h - this.H * s) / 2) + 'px'; box.style.background = this.H * s < h ? 'linear-gradient(#000 0,#000 ' + this.H * s + 'px,#1a2414 ' + this.H * s + 'px)' : '#000'; },
+  resize() {
+    const c = this.cv, box = $('#intro'), w = box.clientWidth || innerWidth, h = box.clientHeight || innerHeight, s = Math.max(w / this.W, Math.min(h / this.H, w / 170));
+    // Soldaten (unterste Bildzeilen) sollen über dem Menü bleiben: Szene notfalls nach oben schieben
+    const m = $('#menu'), menuTop = m && !m.hidden ? m.getBoundingClientRect().top - box.getBoundingClientRect().top : h;
+    let top = Math.min(0, (h - this.H * s) / 2); if (h <= w) top = Math.max(h - this.H * s, Math.min(top, h - 4 - 174 * s)); const feet = top + 174 * s; if (h > w && feet > menuTop - 6) top -= feet - (menuTop - 6);
+    c.style.width = this.W * s + 'px'; c.style.height = this.H * s + 'px'; c.style.left = clamp(w / 2 - 190 * s, w - this.W * s, 0) + 'px'; c.style.top = top + 'px';
+    const bottom = top + this.H * s; box.style.background = bottom < h ? 'linear-gradient(#000 0,#000 ' + bottom + 'px,#1a2414 ' + bottom + 'px)' : '#000';
+  },
   start() { if (this.run) return; this.run = true; let last = performance.now(); const loop = t => { if (!this.run) return; this.t += Math.min(.05, (t - last) / 1000); last = t; this.draw(); requestAnimationFrame(loop); }; requestAnimationFrame(loop); },
   stop() { this.run = false; },
   px(x, y, w, h, c) { this.g.fillStyle = c; this.g.fillRect(Math.round(x), Math.round(y), w, h); },
@@ -238,7 +245,7 @@ const Kampf = {
     const skip = () => { if (this.skipped) return; this.skipped = true; clearTimeout(this.tm); this.showMenu(); };
     $('#intro').addEventListener('pointerdown', e => { if (!$('#menu').hidden) return; skip(); }, { once: false });
     this.tm = setTimeout(() => { $('#titleTxt').hidden = false; $('#titleTxt').classList.add('drop'); setTimeout(() => Snd.play('boom'), 900); }, 600);
-    const lines = ['ANNO 2026.', 'ELF GEMEINDEN. EIN LAND.', 'NUR EINE WIRD HERRSCHEN.'];
+    const lines = ['1 LAND. 11 GEMEINDEN.', 'NUR EINE WIRD GEWINNEN.', 'KRÖNE DICH ZUM HERRSCHER.'];
     let li = 0, ci = 0, txt = '';
     const type = () => {
       if (this.skipped) return;
@@ -250,7 +257,7 @@ const Kampf = {
     setTimeout(() => { if (!this.skipped) type(); }, 2200);
   },
   showMenu() {
-    $('#titleTxt').hidden = false; $('#titleTxt').classList.remove('drop'); $('#story').innerHTML = ''; $('#menu').hidden = false; this.markMenu();
+    $('#titleTxt').hidden = false; $('#titleTxt').classList.remove('drop'); $('#story').innerHTML = ''; $('#menu').hidden = false; this.markMenu(); Intro.resize();
   },
   markMenu() { document.querySelectorAll('#menu .mi').forEach((b, k) => b.classList.toggle('on', k === this.menuIdx)); },
   updSnd() { $('#menu [data-m="snd"]').textContent = 'TON: ' + (Snd.on ? 'AN' : 'AUS'); },
