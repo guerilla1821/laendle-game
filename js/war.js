@@ -311,11 +311,12 @@ const War = {
       if (bestK < 0 || bestK >= a.cand.length || a.cand[bestK] !== bestI) { budget -= .5; if (!a.cand.length) break; continue; }
       const i = a.cand[bestK];
       // Heimat zuerst: freies Land der eigenen Gemeinde ist billig, fremdes teurer
-      let c = M.cost[i] * 1.6 * (M.gem[i] === a.att ? .5 : 1.6);
-      if (def) { const dens = Math.min(10, def.troops / Math.max(1, def.cells)); c = M.cost[i] * (2.5 + dens * 1.1) * this.defense(i, def.id) * (def.traitorUntil > this.t ? .6 : 1) * (M.gem[i] === def.id ? 1.6 : 1); }
+      let c = M.cost[i] * 1.6 * (M.gem[i] === a.att ? .5 : 1.6), dens = 0;
+      if (def) { dens = Math.min(10, def.troops / Math.max(1, def.cells)); c = M.cost[i] * (2.5 + dens * 1.1) * this.defense(i, def.id) * (def.traitorUntil > this.t ? .6 : 1) * (M.gem[i] === def.id ? 1.6 : 1); }
       if (a.troops < c) { a.troops = 0; break; }
       a.troops -= c; budget -= M.cost[i];
-      if (def) def.troops = Math.max(0, def.troops - c * .55);
+      // Verteidiger verliert die Truppen, die auf dem Feld standen (höchstens wie bisher): dünn besetztes Land blutet nicht aus
+      if (def) def.troops = Math.max(0, def.troops - Math.min(c * .55, dens * 1.1));
       a.cand[bestK] = a.cand[a.cand.length - 1]; a.cand.pop(); a.inSet[i] = 0;
       this.setOwner(i, a.att);
       for (const n of this.neighbors(i)) if (this.owner[n] === a.def && !a.inSet[n] && this.passable(n)) { a.cand.push(n); a.inSet[n] = 1; }
