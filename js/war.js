@@ -8,7 +8,8 @@ const WAR_COLORS = ['#000', '#ff004d', '#29adff', '#ffec27', '#00e436', '#ff77a8
 const WAR_BUILD = {
   siedlung: { name: 'Siedlung', cost: 220, eff: '+1500 Truppen-Max.', info: 'Erhöht dein Truppen-Maximum um 1500. Mehr Maximum heisst auch schnelleres Wachstum.' },
   burg: { name: 'Burg', cost: 180, eff: 'Abwehr ×2, 300 m', info: 'Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen pro Feld. Bau sie an die Grenze zu starken Nachbarn.' },
-  markt: { name: 'Markt', cost: 260, eff: '+6 Gold/s', info: 'Bringt 6 Gold pro Sekunde zusätzlich. Gold brauchst du nur für Gebäude.' },
+  markt: { name: 'Markt', cost: 260, eff: '+6 Gold/s', info: 'Bringt 6 Gold pro Sekunde zusätzlich.' },
+  soeldner: { name: 'Söldner', cost: 300, eff: '+20 % Truppen', info: 'Sofort Truppen in Höhe von 20 % deines Maximums. Jede weitere Anwerbung kostet 40 % mehr.' },
 };
 // Schwierigkeit: Wachstum der Computergegner, ab welcher Truppenstärke sie angreifen, Schonfrist für dich, wie viele dich gleichzeitig angreifen, Punkte
 const WAR_LEVELS = {
@@ -79,6 +80,7 @@ const War = {
     $('#wRatio').oninput = e => { this.ratio = e.target.value / 100; $('#wRatioV').textContent = e.target.value + ' %'; };
     document.querySelectorAll('#wBuild button').forEach(b => b.onclick = () => {
       const t = b.dataset.b;
+      if (t === 'soeldner') { this.hire(this.me); return; }
       if (this.build === t) { this.build = null; this.updateBuildBtns(); return; }
       if (!this.me || this.me.gold < this.costOf(this.me, t)) { toast(`Zu wenig Gold für ${WAR_BUILD[t].name}: ${fmtK(this.costOf(this.me, t))} nötig.`); return; }
       this.build = t; this.updateBuildBtns(); toast(`${WAR_BUILD[t].name}: Tippe auf dein Gebiet. Nochmal auf den Knopf tippen bricht ab.`);
@@ -229,7 +231,7 @@ const War = {
     this.owner.fill(0); this.buildings = []; this.attacks = []; this.feed = []; this.t = 0; this.build = null; this.over = false; this.score = 0; this.firstHit = false; this.pacts = new Map(); this.lastHit = {}; this.refused = {}; this.maxWarned = -999; this.nextOffer = 60;
     const R = 14;
     for (const p of this.players) {
-      p.cells = p.pers = p.jobs = 0; p.alive = true; p.gold = 120; p.traitorUntil = 0; p.growth = 0; p.goldRate = 0; p.nextAi = 20 + Math.random() * 20;
+      p.cells = p.pers = p.jobs = 0; p.alive = true; p.gold = 120; p.traitorUntil = 0; p.merc = 0; p.growth = 0; p.goldRate = 0; p.nextAi = 20 + Math.random() * 20;
       const sx = p.start % M.w, sy = Math.floor(p.start / M.w);
       for (let y = sy - R; y <= sy + R; y++) for (let x = sx - R; x <= sx + R; x++) {
         if (x < 0 || y < 0 || x >= M.w || y >= M.h || (x - sx) ** 2 + (y - sy) ** 2 > R * R) continue;
@@ -256,7 +258,7 @@ const War = {
   /* ---------- Regeln ---------- */
   maxTroops(p) { return Math.round(Math.max(this.troopFloor || 0, 800 + p.cells * 1.5 + p.pers * 6 + p.jobs * 2) + 1500 * Math.pow(this.count(p, 'siedlung'), .7)); },
   count(p, type) { let n = 0; for (const b of this.buildings) if (b.owner === p.id && b.type === type) n++; return n; },
-  costOf(p, type) { let n = 0; for (const b of this.buildings) if (b.by === p.id && b.type === type) n++; return Math.round(WAR_BUILD[type].cost * Math.pow(1.5, n)); },
+  costOf(p, type) { if (type === 'soeldner') return Math.round(WAR_BUILD.soeldner.cost * Math.pow(1.4, p.merc || 0)); let n = 0; for (const b of this.buildings) if (b.by === p.id && b.type === type) n++; return Math.round(WAR_BUILD[type].cost * Math.pow(1.5, n)); },
   setOwner(i, pid, silent) {
     const M = this.map, old = this.owner[i];
     if (old) { const q = this.players[old - 1]; q.cells--; q.pers -= M.pers[i]; q.jobs -= M.jobs[i]; }
@@ -382,6 +384,8 @@ const War = {
   botThink(p) {
     const A = this.adj; if (!A) return;
     const max = this.maxTroops(p);
+    // in der Not Söldner anwerben
+    if (p.troops < max * .2 && p.gold >= this.costOf(p, 'soeldner') * 1.2) this.hire(p);
     // bauen
     const types = ['siedlung', 'markt', 'burg'], type = Math.random() < .5 ? 'siedlung' : Math.random() < .6 ? 'markt' : 'burg', cost = this.costOf(p, type);
     if (p.gold >= cost * 1.5 && this.buildings.filter(b => b.by === p.id).length < 1 + p.cells / 4000) { const i = this.randomOwnCell(p, type === 'burg'); if (i >= 0) this.place(p, type, i); }
@@ -416,6 +420,16 @@ const War = {
       return i;
     }
     return -1;
+  },
+  // Söldner: Gold sofort in Truppen umwandeln (bis zum Maximum)
+  hire(p) {
+    if (!p || !p.alive || this.over) return false;
+    const cost = this.costOf(p, 'soeldner'), max = this.maxTroops(p), add = Math.min(Math.round(max * .2), Math.round(max - p.troops));
+    if (p.gold < cost) { if (p === this.me) toast(`Zu wenig Gold für Söldner: ${fmtK(cost)} nötig.`); return false; }
+    if (add < max * .05) { if (p === this.me) toast('Deine Truppen sind fast voll. Söldner lohnen sich erst, wenn Truppen fehlen.'); return false; }
+    p.gold -= cost; p.troops += add; p.merc = (p.merc || 0) + 1;
+    if (p === this.me) { this.log(`Söldner angeworben: +${fmtK(add)} Truppen.`, 'good'); snd('build'); this.updateHud(); }
+    return true;
   },
   place(p, type, i) {
     const cost = this.costOf(p, type); if (p.gold < cost || this.owner[i] !== p.id) return false;
@@ -589,13 +603,13 @@ const War = {
     return [
       { t: 'Kampf um Liechtenstein', b: `Du führst eine Gemeinde. Wer ${WIN_SHARE * 100} % des Landes hält, gewinnt. Die anderen zehn Gemeinden spielt der Computer.` },
       { sel: '#wTroopsBox', t: 'Truppen', b: 'Deine Truppen, dahinter das Maximum und das Wachstum pro Sekunde. Am schnellsten wachsen sie bei etwa der Hälfte des Maximums. AM MAXIMUM WÄCHST NICHTS MEHR: dann angreifen oder Land dazugewinnen.' },
-      { sel: '#wGoldBox', t: 'Gold', b: 'Gold kommt vor allem von den Arbeitsplätzen in deinem Gebiet. Du brauchst es nur für Gebäude.' },
+      { sel: '#wGoldBox', t: 'Gold', b: 'Gold kommt vor allem von den Arbeitsplätzen in deinem Gebiet. Du brauchst es für Gebäude und Söldner.' },
       { sel: '#wScoreBox', t: 'Punkte', b: 'Neutrales Feld 1 Punkt, feindliches Feld 3, Gebäude 50, ausgelöschte Gemeinde 5000, Sieg 50000 plus Zeitbonus. Schwache Startgemeinden zählen mehr (Faktor bis ×3).' },
       { sel: '#w3d', t: 'Ansicht und Hilfe', b: 'Ziehen verschiebt die Karte, Mausrad oder zwei Finger zoomen. Zwei Finger gemeinsam hoch oder runter kippen die Karte in 3D, Drehen dreht sie. Am Computer mit der rechten Maustaste. Der Knopf 3D/2D schaltet um. Während die Anleitung offen ist, ruht das Spiel. Mit ? kommt sie wieder.' },
       { sel: '#wBoard', t: 'Rangliste und Bündnisse', b: 'Die drei Führenden. Aufklappen zeigt alle Gemeinden. Mit ' + Spr.img('pakt', 1) + ' bietest du ein Bündnis an (5 Minuten). Verbündete greifen sich nicht an. Wer ein Bündnis bricht, gilt 30 s als Verräter.' },
       { sel: '#wc', t: 'Ausbreiten', b: 'Tippe auf ungefärbtes Land neben deinem Gebiet. Talboden ist billig, Hang, Wald und Berge kosten viel mehr Truppen pro Feld. Hauptstrassen sind billig, Wasser geht nicht. Freies Land deiner eigenen Gemeinde kostet nur die Hälfte, fremdes mehr. Und daheim verteidigst du dich besser (Heimvorteil).' },
       { sel: '.wr', t: 'Angriffsstärke', b: 'So viel Prozent deiner Truppen schickt ein Tippen los. Nicht verbrauchte Truppen kehren zurück. Nachbarn kosten mehr, je dichter sie besetzt sind.' },
-      { sel: '#wBuild', t: 'Gebäude', b: 'SIEDLUNG: +1500 Truppen-Maximum, also schnelleres Wachstum.<br>BURG: Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen.<br>MARKT: +6 Gold pro Sekunde.<br>Jedes weitere Gebäude derselben Art wird teurer.' },
+      { sel: '#wBuild', t: 'Gebäude und Söldner', b: 'SIEDLUNG: +1500 Truppen-Maximum, also schnelleres Wachstum.<br>BURG: Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen.<br>MARKT: +6 Gold pro Sekunde.<br>SÖLDNER: sofort +20 % Truppen für Gold, gut in der Not.<br>Jedes weitere Gebäude derselben Art und jede Anwerbung wird teurer.' },
     ];
   },
   tutorial(k) {
