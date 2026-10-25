@@ -310,7 +310,7 @@ const Kampf = {
     this.panel(`<div class="ghead">${Spr.portraitImg(g.avatar, 5, g.leader)}<div><div class="gn" style="color:${col}">${esc(n.toUpperCase())}</div><h2>${esc(g.leader)}</h2><div class="gt">${esc(g.title)}</div><p class="gq">«${esc(g.quote)}»</p></div></div>
       <h3>CHARAKTER</h3><p>${esc(g.character)}</p>
       <h3>STÄRKEN</h3>${li(g.strengths)}<h3>SCHWÄCHEN</h3>${li(g.weaknesses)}<h3>GEHEIMWAFFE</h3><p>${esc(g.secret)}</p>
-      ${stats}<h3>FAKTEN</h3>${li(g.facts)}<p class="gname">NAMENSPATIN/-PATE: ${esc(g.flur)}</p>
+      ${stats}<p class="gname">NAMENSPATIN/-PATE: ${esc(g.flur)}</p>
       <div class="trow" style="margin-top:14px"><button class="px-btn red" id="gPlay">MIT ${esc(n.toUpperCase())} SPIELEN</button><button class="px-btn" id="gPrev">&lt;</button><button class="px-btn" id="gNext">&gt;</button><button class="px-btn" id="pClose">LISTE</button></div>`);
     $('#panel').scrollTop = 0;
     $('#pClose').onclick = () => { Snd.play('tap'); this.gemList(); };

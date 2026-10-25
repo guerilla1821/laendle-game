@@ -70,7 +70,12 @@ const War = {
     $('#wExit').onclick = () => this.exit(); $('#wHelp').onclick = () => { snd('tap'); this.tutorial(0); };
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.halt.add('hidden'); else this.halt.delete('hidden'); });
     $('#wRatio').oninput = e => { this.ratio = e.target.value / 100; $('#wRatioV').textContent = e.target.value + ' %'; };
-    document.querySelectorAll('#wBuild button').forEach(b => b.onclick = () => { this.build = this.build === b.dataset.b ? null : b.dataset.b; this.updateBuildBtns(); if (this.build) toast(`${WAR_BUILD[this.build].name}: Tippe auf dein Gebiet.`); });
+    document.querySelectorAll('#wBuild button').forEach(b => b.onclick = () => {
+      const t = b.dataset.b;
+      if (this.build === t) { this.build = null; this.updateBuildBtns(); return; }
+      if (!this.me || this.me.gold < this.costOf(this.me, t)) { toast(`Zu wenig Gold für ${WAR_BUILD[t].name}: ${fmtK(this.costOf(this.me, t))} nötig.`); return; }
+      this.build = t; this.updateBuildBtns(); toast(`${WAR_BUILD[t].name}: Tippe auf dein Gebiet. Nochmal auf den Knopf tippen bricht ab.`);
+    });
     let last = performance.now(), acc = 0;
     const loop = t => {
       const dt = Math.min(.25, (t - last) / 1000); last = t;
@@ -238,7 +243,7 @@ const War = {
   /* ---------- Regeln ---------- */
   maxTroops(p) { return Math.round(800 + p.cells * 1.5 + p.pers * 6 + p.jobs * 2 + this.count(p, 'siedlung') * 1500); },
   count(p, type) { let n = 0; for (const b of this.buildings) if (b.owner === p.id && b.type === type) n++; return n; },
-  costOf(p, type) { return Math.round(WAR_BUILD[type].cost * Math.pow(1.6, this.count(p, type))); },
+  costOf(p, type) { let n = 0; for (const b of this.buildings) if (b.by === p.id && b.type === type) n++; return Math.round(WAR_BUILD[type].cost * (1 + .6 * n)); },
   setOwner(i, pid, silent) {
     const M = this.map, old = this.owner[i];
     if (old) { const q = this.players[old - 1]; q.cells--; q.pers -= M.pers[i]; q.jobs -= M.jobs[i]; }
@@ -385,7 +390,7 @@ const War = {
     const cost = this.costOf(p, type); if (p.gold < cost || this.owner[i] !== p.id) return false;
     const M = this.map;
     if (this.buildings.some(b => Math.abs(b.i % M.w - i % M.w) + Math.abs(Math.floor(b.i / M.w) - Math.floor(i / M.w)) < 6)) { if (p === this.me) toast('Zu nah an einem anderen Gebäude.'); return false; }
-    p.gold -= cost; this.buildings.push({ type, owner: p.id, i });
+    p.gold -= cost; this.buildings.push({ type, owner: p.id, by: p.id, i });
     if (p === this.me) { this.log(`${WAR_BUILD[type].name} gebaut.`); this.score += 50; snd('build'); }
     return true;
   },
@@ -412,7 +417,12 @@ const War = {
     if (this.phase !== 'play' || this.halt.has('end')) return;
     if (!this.passable(i)) { toast('Wasser kann man nicht erobern.'); return; }
     const o = this.owner[i], me = this.me;
-    if (this.build) { if (o !== me.id) { toast('Bauen geht nur auf deinem Gebiet.'); return; } if (this.place(me, this.build, i)) { this.build = null; this.updateBuildBtns(); } else if (me.gold < this.costOf(me, this.build)) toast('Zu wenig Gold.'); return; }
+    if (this.build) {
+      const t = this.build; this.build = null; this.updateBuildBtns();
+      if (o !== me.id) { toast('Bauen geht nur auf deinem Gebiet. Bauen abgebrochen.'); return; }
+      if (me.gold < this.costOf(me, t)) { toast('Zu wenig Gold. Bauen abgebrochen.'); return; }
+      this.place(me, t, i); return;
+    }
     if (o === me.id) { toast('Das ist dein Gebiet. Tippe auf neutrales Land oder einen Nachbarn.'); return; }
     if (o && this.allied(me.id, o)) { toast(`${this.players[o - 1].name} ist mit dir verbündet. Bündnis zuerst in der Rangliste brechen.`); return; }
     const ok = this.attack(me.id, o, me.troops * this.ratio, i % M.w, Math.floor(i / M.w)); if (ok) snd(o ? 'charge' : 'tap');
@@ -435,7 +445,8 @@ const War = {
   fit() { const M = this.map, top = 64, bot = this.W < 700 ? 150 : 100; this.minS = Math.min(this.W / M.w, (this.H - top - bot) / M.h) * .95; this.cam.s = this.minS; this.cam.x = M.w / 2; this.cam.y = M.h / 2 + (bot - top) / 2 / this.cam.s; },
   clampCam() { const M = this.map; this.cam.x = clamp(this.cam.x, 0, M.w); this.cam.y = clamp(this.cam.y, 0, M.h); },
   updateBuildBtns() {
-    document.querySelectorAll('#wBuild button').forEach(b => { const t = b.dataset.b, c = this.me ? this.costOf(this.me, t) : WAR_BUILD[t].cost; b.querySelector('small').textContent = c + ' Gold'; b.querySelector('em').textContent = WAR_BUILD[t].eff; b.setAttribute('aria-pressed', this.build === t); b.disabled = !this.me || this.me.gold < c; });
+    document.querySelectorAll('#wBuild button').forEach(b => { const t = b.dataset.b, c = this.me ? this.costOf(this.me, t) : WAR_BUILD[t].cost; b.querySelector('small').textContent = fmtK(c) + ' Gold'; b.querySelector('em').textContent = WAR_BUILD[t].eff; b.setAttribute('aria-pressed', this.build === t); b.classList.toggle('poor', !this.me || this.me.gold < c); });
+    if (this.build && this.me && this.me.gold < this.costOf(this.me, this.build)) { this.build = null; document.querySelectorAll('#wBuild button').forEach(b => b.setAttribute('aria-pressed', false)); }
   },
   updateHud() {
     if (!this.me) return; const me = this.me, M = this.map, max = this.maxTroops(me), full = me.troops >= max * .97;
