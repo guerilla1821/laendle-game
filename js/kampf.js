@@ -279,7 +279,8 @@ const Kampf = {
       <p><b>HÖHEN SCHWEIZ UND ÖSTERREICH</b><br>Copernicus DEM GLO-30 © DLR e.V. 2010-2014 und © Airbus Defence and Space GmbH 2014-2018, bereitgestellt durch das Copernicus-Programm der EU und ESA</p>
       <p><b>HAUPTSTRASSEN</b><br>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap-Mitwirkende</a>, ODbL</p>
       <p><b>EINWOHNER UND ARBEITSPLÄTZE</b><br>Bevölkerungs- und Arbeitsplatzdichte (Hektarraster), Amt für Statistik Liechtenstein</p>
-      <p><b>HIGHSCORE</b><br>gespeichert bei Supabase</p></div>
+      <p><b>HIGHSCORE</b><br>gespeichert bei Supabase</p>
+      <h3>DATENSCHUTZ</h3><p>Damit das Spiel fairer wird, speichert es den Verlauf jeder Partie anonym: Land, Truppen, Gold und Spielmeldungen, dazu die Bildschirmgrösse. Keine Namen, keine Konten. Der Highscore speichert nur die drei Buchstaben, die du selbst eingibst.</p></div>
       <div class="trow" style="margin-top:16px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`);
     else if (m === 'tut') this.panel(`<h2>ANLEITUNG</h2>${War.tutSteps().map(s => `<h3>${esc(s.t.toUpperCase())}</h3><p>${s.b}</p>`).join('')}<div class="trow" style="margin-top:16px"><button class="px-btn" id="pClose">ZURÜCK</button></div>`);
   },
