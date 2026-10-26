@@ -2,7 +2,7 @@
 const snd = n => { if (window.Snd) Snd.play(n); };
 /* Kampf um Liechtenstein: Gebietsstrategie nach dem Prinzip von OpenFront, vereinfacht.
    Raster 25 m (aus der Pipeline): Gemeinde, Boden, Höhe. Bevölkerung und Arbeitsplätze aus dem Hektarraster.
-   11 Gemeinden, eine davon spielst du, die anderen sind Bots. Wer 70 % des Landes hält, gewinnt. */
+   11 Gemeinden, eine davon spielst du, die anderen sind Bots. Wer 50 % des Landes hält, gewinnt. */
 // Farben nach der Palette der Retro-Konsole PICO-8
 const WAR_COLORS = ['#000', '#ff004d', '#29adff', '#ffec27', '#00e436', '#ff77a8', '#ffa300', '#83769c', '#ffccaa', '#ab5236', '#c2c3c7', '#fff1e8'];
 const WAR_BUILD = {
@@ -17,7 +17,7 @@ const WAR_LEVELS = {
   normal: { name: 'NORMAL', grow: 1, attackAt: .45, grace: 90, maxOnMe: 2, score: 1 },
   schwer: { name: 'SCHWER', grow: 1.12, attackAt: .38, grace: 30, maxOnMe: 4, score: 1.5 },
 };
-const COLLAPSE_AFTER = 360, COLLAPSE_MIN = 0.003, PREY_AFTER = 360, PREY_SHARE = 0.02, MERC_MAX = 4, MERC_PAUSE = 60, BOT_MERC_MAX = 2, COLLAPSE_SHARE = 0.01, WIN_SHARE = 0.7, PACT_TIME = 300, TRAITOR_TIME = 30;
+const COLLAPSE_AFTER = 360, COLLAPSE_MIN = 0.003, PREY_AFTER = 360, PREY_SHARE = 0.02, MERC_MAX = 4, MERC_PAUSE = 60, BOT_MERC_MAX = 2, COLLAPSE_SHARE = 0.01, WIN_SHARE = 0.5, PACT_TIME = 300, TRAITOR_TIME = 30;
 
 const War = {
   level: store.get('kampf-level') || 'normal', inited: false, map: null, phase: 'off', speed: 1, halt: new Set(), score: 0, ratio: .3, build: null, cam: { x: 0, y: 0, s: 1, tilt: 0, yaw: 0 },

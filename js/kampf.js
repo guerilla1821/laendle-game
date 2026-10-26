@@ -181,7 +181,7 @@ const Intro = {
 
 /* ======================= Highscore ======================= */
 const HS = {
-  key: 'kampf-highscore',
+  key: 'kampf-highscore-2',   // seit 26.10.2026 (Sieg ab 50 %) neu gezählt
   // Supabase (öffentliche Tabelle kampf_highscore); ohne Schlüssel oder offline: nur auf diesem Gerät
   get remote() { return !!(CFG.supabaseUrl && CFG.supabaseKey); },
   headers(extra) { const k = CFG.supabaseKey, h = { apikey: k, 'Content-Type': 'application/json' }; if (k.startsWith('eyJ')) h.Authorization = 'Bearer ' + k; return Object.assign(h, extra || {}); },
