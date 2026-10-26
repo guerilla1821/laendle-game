@@ -189,10 +189,10 @@ const HS = {
   async list() {
     if (this.remote) {
       try {
-        const r = await fetch(`${CFG.supabaseUrl}/rest/v1/kampf_highscore?select=id,name,gemeinde,score,win,minutes,created_at&order=score.desc,created_at.asc&limit=10`, { headers: this.headers() });
+        const r = await fetch(`${CFG.supabaseUrl}/rest/v1/kampf_highscore?select=id,name,gemeinde,score,win,minutes,platz,created_at&order=score.desc,created_at.asc&limit=10`, { headers: this.headers() });
         if (!r.ok) throw new Error(r.status);
         this.online = true;
-        return (await r.json()).map(e => ({ id: e.id, n: e.name, g: e.gemeinde, s: e.score, w: e.win, m: e.minutes }));
+        return (await r.json()).map(e => ({ id: e.id, n: e.name, g: e.gemeinde, s: e.score, w: e.win, m: e.minutes, p: e.platz }));
       } catch (e) { console.warn('Highscore offline', e); this.online = false; }
     }
     return this.local();
@@ -202,7 +202,7 @@ const HS = {
     if (this.remote) {
       try {
         const r = await fetch(`${CFG.supabaseUrl}/rest/v1/kampf_highscore`, { method: 'POST', headers: this.headers({ Prefer: 'return=representation' }),
-          body: JSON.stringify({ name: e.n, gemeinde: e.g, score: e.s, win: !!e.w, minutes: Math.min(600, e.m || 0), land: Math.min(100, e.land || 0) }) });
+          body: JSON.stringify({ name: e.n, gemeinde: e.g, score: e.s, win: !!e.w, minutes: Math.min(600, e.m || 0), land: Math.min(100, e.land || 0), ...(e.p ? { platz: e.p } : {}) }) });
         if (!r.ok) throw new Error(r.status + ' ' + await r.text());
         const row = (await r.json())[0]; e.id = row && row.id; return true;
       } catch (err) { console.warn('Highscore nicht gespeichert', err); toast('Online-Highscore nicht erreichbar, lokal gespeichert.'); }
@@ -214,7 +214,7 @@ const HS = {
   table(list, hi) {
     const where = this.remote && this.online ? 'WELTWEIT' : 'NUR AUF DIESEM GERÄT';
     if (!list.length) return `<p>NOCH KEINE EINTRÄGE. SEI DER ERSTE!</p><div class="hsinfo">${where}</div>`;
-    return `<table class="hs"><tr><th>#</th><th>NAME</th><th>GEMEINDE</th><th></th><th style="text-align:right">PUNKTE</th></tr>${list.map((e, k) => `<tr class="${hi && e === hi ? 'new' : ''}"><td>${k + 1}.</td><td class="n">${esc(e.n)}</td><td><i style="background:${this.color(e.g)}"></i><span>${esc(e.g.toUpperCase())}</span></td><td>${e.w ? Spr.img('pokal', 1, 'Sieg') : ''}</td><td class="s">${e.s.toLocaleString('de-CH')}</td></tr>`).join('')}</table><div class="hsinfo">${where}</div>`;
+    return `<table class="hs"><tr><th>#</th><th>NAME</th><th>GEMEINDE</th><th title="Schlussplatz in der Partie">PL.</th><th style="text-align:right">PUNKTE</th></tr>${list.map((e, k) => `<tr class="${hi && e === hi ? 'new' : ''}"><td>${k + 1}.</td><td class="n">${esc(e.n)}</td><td><i style="background:${this.color(e.g)}"></i><span>${esc(e.g.toUpperCase())}</span></td><td class="pl" title="${e.p ? e.p + '. Platz' : ''}">${e.w || e.p === 1 ? Spr.img('pokal', 1, 'Sieg') : e.p ? e.p + '.' : ''}</td><td class="s">${e.s.toLocaleString('de-CH')}</td></tr>`).join('')}</table><div class="hsinfo">${where}</div>`;
   },
 };
 
@@ -332,7 +332,7 @@ const Kampf = {
   async endScreen(r) {
     const m = $('#modal'); m.hidden = false;
     const head = r.win ? `<h2 class="win">SIEG!<br>${esc(r.gem.toUpperCase())} HERRSCHT</h2>` : r.winner ? `<h2 class="lose">NIEDERLAGE<br>${esc(r.winner.name.toUpperCase())} HERRSCHT</h2>` : `<h2 class="lose">${esc(r.gem.toUpperCase())}<br>IST GEFALLEN</h2>`;
-    const body = `<div class="sc"><span>LAND</span><b>${r.land} %</b><span>ZEIT</span><b>${r.min} MIN</b><span>EROBERUNGEN</span><b>${r.base.toLocaleString('de-CH')}</b>${r.bonus ? `<span>SIEGBONUS</span><b>${r.bonus.toLocaleString('de-CH')}</b>` : ''}<span>GEMEINDE-FAKTOR</span><b>X${r.factor}</b>${r.level ? `<span>SCHWIERIGKEIT ${r.level.name}</span><b>X${r.level.score}</b>` : ''}<span class="tot">PUNKTE</span><b class="tot">${r.total.toLocaleString('de-CH')}</b></div>`;
+    const body = `<div class="sc"><span>PLATZ</span><b>${r.platz}. VON 11</b><span>LAND</span><b>${r.land} %</b><span>ZEIT</span><b>${r.min} MIN</b><span>EROBERUNGEN</span><b>${r.base.toLocaleString('de-CH')}</b>${r.bonus ? `<span>SIEGBONUS</span><b>${r.bonus.toLocaleString('de-CH')}</b>` : ''}<span>GEMEINDE-FAKTOR</span><b>X${r.factor}</b>${r.level ? `<span>SCHWIERIGKEIT ${r.level.name}</span><b>X${r.level.score}</b>` : ''}<span class="tot">PUNKTE</span><b class="tot">${r.total.toLocaleString('de-CH')}</b></div>`;
     const buttons = `<div class="trow"><button class="px-btn red" id="eAgain">NOCHMAL</button><button class="px-btn" id="eMenu">MENÜ</button>${r.win ? '<button class="px-btn" id="eCont">WEITER</button>' : ''}</div>`;
     m.innerHTML = `<div class="mcard px">${head}${body}<div id="eHs"><p>LADE HIGHSCORE...</p></div>${buttons}</div>`;
     $('#eAgain').onclick = () => { Snd.play('tap'); m.hidden = true; War.choose(); };
@@ -345,7 +345,7 @@ const Kampf = {
     const save = async () => {
       const n = (inp.value || 'AAA').toUpperCase().replace(/[^A-ZÄÖÜ0-9]/g, '').slice(0, 3) || 'AAA'; store.set('kampf-name', n);
       $('#eSave').disabled = true;
-      const e = { n, g: r.gem, s: r.total, w: r.win, m: r.min, land: r.land };
+      const e = { n, g: r.gem, s: r.total, w: r.win, m: r.min, land: r.land, p: r.platz };
       await HS.add(e); Snd.play('pact');
       const fresh = await HS.list(), mine = fresh.find(x => (e.id && x.id === e.id) || (!e.id && x === e) || (!e.id && x.n === e.n && x.s === e.s)) || null;
       box.innerHTML = HS.table(fresh, mine);

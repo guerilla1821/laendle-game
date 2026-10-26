@@ -476,8 +476,11 @@ const War = {
     this.over = true; this.halt.add('end');
     const land = Math.round(this.me.cells / this.map.land * 100), min = Math.max(1, Math.round(this.t / 60));
     const bonus = win ? 50000 + Math.max(0, Math.round((1500 - this.t) * 40)) : 0, total = Math.round((this.score + bonus) * this.factor * this.lvl.score);
+    // Schlussplatz: Sieger ist Erster; sonst zählen alle Gemeinden, die noch leben und mehr Land haben (wer erobert ist, steht hinter allen Lebenden)
+    const others = this.players.filter(q => q !== this.me && q.alive), platz = win ? 1 : this.me.alive ? 1 + others.filter(q => q.cells > this.me.cells).length : 1 + others.length;
+    if (this.trace) this.trace.platz = platz;
     snd(win ? 'win' : 'lose'); this.upload(win ? 'sieg' : winner ? 'niederlage:' + winner.name : 'erobert', total);
-    if (this.onEnd) this.onEnd({ win, winner, land, min, base: this.score, bonus, factor: this.factor, level: this.lvl, total, gem: this.me.name, color: this.me.color });
+    if (this.onEnd) this.onEnd({ win, winner, land, min, base: this.score, bonus, factor: this.factor, level: this.lvl, total, platz, gem: this.me.name, color: this.me.color });
   },
   continueAfterWin() { this.halt.delete('end'); },
   // Spielverlauf anonym an Supabase senden (Tabelle kampf_protokoll), damit sich die Balance auswerten lässt
