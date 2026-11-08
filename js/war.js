@@ -17,6 +17,17 @@ const WAR_LEVELS = {
   normal: { name: 'NORMAL', grow: 1, attackAt: .45, grace: 150, maxOnMe: 2, score: 1 },
   schwer: { name: 'SCHWER', grow: 1.12, attackAt: .38, grace: 30, maxOnMe: 4, score: 1.5 },
 };
+// Wirtschaftsmodell, umschaltbar mit ?modell=einwohner in der Adresse (zum Vergleichen und Zurückwechseln)
+const WAR_MODELS = {
+  // wie im Original (OpenFront): Truppen nur aus der Fläche (leicht abnehmender Ertrag, OpenFront nutzt Exponent 0.6), Einwohner und Arbeitsplätze bringen Gold
+  flaeche: { raw: (c, pe, jo) => FL_B + FL_A * Math.pow(c, FL_E), gold: (c, pe, jo) => 4 + jo * .012 + pe * .01 + c * .001 },
+  // bis 8.11.2026: Einwohner und Arbeitsplätze zählen direkt als Truppen
+  einwohner: { raw: (c, pe, jo) => 800 + c * 1.5 + pe * 6 + jo * 2, gold: (c, pe, jo) => 4 + jo * .012 + c * .0015 },
+};
+// Flächenmodell: Exponent (unter 1 = abnehmender Ertrag); geeicht auf 8000 Truppen bei 600 Feldern (Start) und 45000 bei 12000 Feldern
+const FL_E = (() => { try { const e = +new URLSearchParams(location.search).get('exp'); return e > .3 && e <= 1 ? e : .9; } catch (x) { return .9; } })();
+const FL_A = 37000 / (Math.pow(12000, FL_E) - Math.pow(600, FL_E)), FL_B = 8000 - FL_A * Math.pow(600, FL_E);
+const WAR_MODEL = (() => { try { const m = new URLSearchParams(location.search).get('modell'); return WAR_MODELS[m] ? m : 'flaeche'; } catch (e) { return 'flaeche'; } })();
 const LEADER_HUNT_AFTER = 360, LEADER_HUNT_SHARE = 0.1, COLLAPSE_AFTER = 360, COLLAPSE_MIN = 0.003, PREY_AFTER = 360, PREY_SHARE = 0.02, MERC_MAX = 4, MERC_PAUSE = 60, BOT_MERC_MAX = 2, COLLAPSE_SHARE = 0.01, WIN_SHARE = 0.5, PACT_TIME = 300, TRAITOR_TIME = 30;
 
 const War = {
@@ -219,7 +230,7 @@ const War = {
     st.forEach((q, k) => {
       const sx = sp[k] % M.w, sy = Math.floor(sp[k] / M.w);
       for (let y = sy - R; y <= sy + R; y++) for (let x = sx - R; x <= sx + R; x++) { if (x < 0 || y < 0 || x >= M.w || y >= M.h || (x - sx) ** 2 + (y - sy) ** 2 > R * R) continue; const i = y * M.w + x; if (M.gem[i] === q.id && M.cost[i] !== Infinity) { q.start.cells++; q.start.pers += M.pers[i]; q.start.jobs += M.jobs[i]; } }
-      q.cost /= Math.max(1, q.cells); q.startMax = Math.round(800 + q.start.cells * 1.5 + q.start.pers * 6 + q.start.jobs * 2);
+      q.cost /= Math.max(1, q.cells); q.startMax = Math.round(WAR_MODELS[WAR_MODEL].raw(q.start.cells, q.start.pers, q.start.jobs));
     });
     const avgT = st.reduce((s, q) => s + q.cost, 0) / n, avgM = st.reduce((s, q) => s + q.startMax, 0) / n;
     st.forEach(q => { q.factor = Math.round(clamp(Math.sqrt(avgM / q.startMax) * (q.cost / avgT), 1, 3) * 10) / 10; });
@@ -246,7 +257,7 @@ const War = {
     this.log(`Du führst ${this.me.name}. Tippe auf neutrales Land, um dich auszubreiten.`);
     // Faktor: schwache Startgemeinden (wenig Truppen, steiles Gelände) geben mehr Punkte
     this.factor = this.gemStats()[gid - 1].factor;
-    this.trace = { v: 1, session: (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()), gemeinde: this.me.name, level: this.level || 'normal',
+    this.trace = { v: 1, session: (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()), gemeinde: this.me.name, level: this.level || 'normal', modell: WAR_MODEL === 'flaeche' ? 'flaeche-' + FL_E : WAR_MODEL,
       geraet: `${innerWidth}x${innerHeight}${matchMedia('(pointer:coarse)').matches ? ' touch' : ''}`, start: new Date().toISOString(),
       spalten: 't, felder, truppen, max, gold, wachstum, angriffe_auf_mich, eigene_angriffe, gebaeude, top5 [id, felder, truppen]', snaps: [], ev: [] };
     this.labels(); this.updateHud(); this.layout(); snd('start'); if (this.onPhase) this.onPhase('play');
@@ -256,7 +267,7 @@ const War = {
   // Kurzname des Oberhaupts für Meldungen
   boss(p) { const g = window.GEM_INFO && GEM_INFO[p.name]; return g ? `${g.short} (${p.name})` : p.name; },
   /* ---------- Regeln ---------- */
-  maxTroops(p) { return Math.round(Math.max(this.troopFloor || 0, 800 + p.cells * 1.5 + p.pers * 6 + p.jobs * 2) + 1500 * Math.pow(this.count(p, 'siedlung'), .7)); },
+  maxTroops(p) { return Math.round(Math.max(this.troopFloor || 0, WAR_MODELS[WAR_MODEL].raw(p.cells, p.pers, p.jobs)) + 1500 * Math.pow(this.count(p, 'siedlung'), .7)); },
   count(p, type) { let n = 0; for (const b of this.buildings) if (b.owner === p.id && b.type === type) n++; return n; },
   costOf(p, type) { if (type === 'soeldner') return Math.round(WAR_BUILD.soeldner.cost * Math.pow(2, p.merc || 0)); let n = 0; for (const b of this.buildings) if (b.by === p.id && b.type === type) n++; return Math.round(WAR_BUILD[type].cost * Math.pow(1.5, n)); },
   setOwner(i, pid, silent) {
@@ -354,7 +365,7 @@ const War = {
       const max = this.maxTroops(p), T = p.troops;
       p.growth = (max * .006 + T * .06) * Math.max(0, 1 - T / max) * (p.bot ? this.lvl.grow : 1);
       p.troops = T > max ? T - (T - max) * .02 : Math.min(max, T + p.growth * .1);
-      p.goldRate = 4 + p.jobs * .012 + p.cells * .0015 + this.count(p, 'markt') * 6;
+      p.goldRate = WAR_MODELS[WAR_MODEL].gold(p.cells, p.pers, p.jobs) + this.count(p, 'markt') * 6;
       p.gold += p.goldRate * .1;
     }
     this.attacks = this.attacks.filter(a => this.stepAttack(a));
@@ -362,7 +373,7 @@ const War = {
     if (Math.floor(this.t * 10) % 20 === 0) {
       this.adjacency();
       // Aufholhilfe: Niemand fällt unter die Hälfte der durchschnittlichen Truppenstärke (Grundwert ohne Siedlungen)
-      const al = this.players.filter(p => p.alive), raw = p => 800 + p.cells * 1.5 + p.pers * 6 + p.jobs * 2;
+      const al = this.players.filter(p => p.alive), raw = p => WAR_MODELS[WAR_MODEL].raw(p.cells, p.pers, p.jobs);
       this.troopFloor = Math.max(this.startFloor || 0, Math.round(.5 * al.reduce((s, p) => s + raw(p), 0) / Math.max(1, al.length)));
       // Stimmung des Trommelspiels: leise und langsam bei schwachen Truppen, schneller wenn ein Gegner sich den 50 % nähert
       if (this.me && this.me.alive && typeof Snd !== 'undefined' && Snd.setMood) Snd.setMood({ low: this.me.troops < this.maxTroops(this.me) * .2, danger: al.some(q => q.bot && q.cells / M.land >= .4) });
@@ -564,15 +575,16 @@ const War = {
   },
   renderBoard() {
     const me = this.me, M = this.map, all = this.players.slice().sort((a, b) => (b.alive - a.alive) || b.cells - a.cells);
-    const rank = all.indexOf(me), open = this.boardOpen;
+    // PC und Tablet: immer alle 11 mit beschrifteten Bündnisknöpfen; Handy: aufklappbar, nur Symbole
+    const wide = innerWidth > 700 && innerHeight > 500, rank = all.indexOf(me), open = wide || this.boardOpen, L = (img, txt) => wide ? `${img}<b>${txt}</b>` : img;
     let rows = open ? all : all.filter(p => p.alive).slice(0, 3); if (!open && !rows.includes(me)) rows = rows.concat([me]);
     const row = p => {
       const k = all.indexOf(p), pact = this.pacts.get(this.pk(me.id, p.id)), left = pact ? Math.max(0, Math.round(pact.until - this.t)) : 0;
-      const act = !open ? '' : p === me || !p.alive ? `<button class="ph" tabindex="-1" aria-hidden="true">${Spr.img('pakt', 1)}</button>` : pact ? `<button data-a="break" data-p="${p.id}" title="Bündnis brechen (du giltst ${TRAITOR_TIME} s als Verräter)">${Spr.img('bruch', 1)}</button>` : this.refused[p.id] > this.t ? `<button disabled title="Abgelehnt, bald wieder möglich">${Spr.img('pakt', 1)}</button>` : `<button data-a="offer" data-p="${p.id}" title="Bündnis anbieten">${Spr.img('pakt', 1)}</button>`;
-      return `<div class="${p === me ? 'me' : ''}${p.alive ? '' : ' dead'}" data-f="${p.id}"><i style="background:${p.color}"></i><em>${k + 1}.</em> ${esc(p.name)}${pact ? ` <small class="pact" title="Bündnis, noch ${left} s">${Spr.img('pakt', 1)}${Math.ceil(left / 60)}M</small>` : ''}${p.traitorUntil > this.t ? ` ${Spr.img('warn', 1, 'Verräter')}` : ''}<span>${p.alive ? (p.cells / M.land * 100).toFixed(1) + ' %' : 'erobert'}</span>${open ? `<span class="tr">${p.alive ? fmtK(p.troops) : ''}</span>` : ''}${act}</div>`;
+      const act = !open ? '' : p === me || !p.alive ? `<button class="ph" tabindex="-1" aria-hidden="true">${L(Spr.img('pakt', 1), 'BÜNDNIS')}</button>` : pact ? `<button class="brk" data-a="break" data-p="${p.id}" title="Bündnis brechen (du giltst ${TRAITOR_TIME} s als Verräter)">${L(Spr.img('bruch', 1), 'BRECHEN')}</button>` : this.refused[p.id] > this.t ? `<button disabled title="Abgelehnt, bald wieder möglich">${L(Spr.img('pakt', 1), 'BÜNDNIS')}</button>` : `<button data-a="offer" data-p="${p.id}" title="Bündnis anbieten">${L(Spr.img('pakt', 1), 'BÜNDNIS')}</button>`;
+      return `<div class="${p === me ? 'me' : ''}${p.alive ? '' : ' dead'}" data-f="${p.id}"><i style="background:${p.color}"></i><em>${k + 1}.</em> ${esc(p.name)}${pact ? ` <small class="pact" title="Bündnis, noch ${left} s">${Spr.img('pakt', 1)}${wide ? 'VERBÜNDET ' : ''}${Math.ceil(left / 60)}M</small>` : ''}${p.traitorUntil > this.t ? ` ${Spr.img('warn', 1, 'Verräter')}` : ''}<span>${p.alive ? (p.cells / M.land * 100).toFixed(1) + ' %' : 'erobert'}</span>${open ? `<span class="tr">${p.alive ? fmtK(p.troops) : ''}</span>` : ''}${act}</div>`;
     };
-    const html = rows.map(row).join('') + `<button class="more" data-a="toggle">${open ? 'WENIGER' : `ALLE ${all.length} GEMEINDEN`}</button><div class="goal">ZIEL: ${WIN_SHARE * 100} %</div>`;
-    const el = $('#wBoard'); el.classList.toggle('open', !!open); if (el._html === html) return; el._html = html; el.innerHTML = html;
+    const html = rows.map(row).join('') + (wide ? '' : `<button class="more" data-a="toggle">${open ? 'WENIGER' : `ALLE ${all.length} GEMEINDEN`}</button>`) + `<div class="goal">ZIEL: ${WIN_SHARE * 100} %</div>`;
+    const el = $('#wBoard'); el.classList.toggle('open', !!open); el.classList.toggle('wide', wide); if (el._html === html) return; el._html = html; el.innerHTML = html;
     el.querySelectorAll('[data-a]').forEach(b => b.onclick = e => { e.stopPropagation(); const a = b.dataset.a, q = this.players[(+b.dataset.p || 1) - 1];
       if (a === 'toggle') this.boardOpen = !this.boardOpen; else if (a === 'offer') this.offer(me, q); else if (a === 'break') this.breakPact(me, q, true);
       el._html = null; this.renderBoard(); });
@@ -644,8 +656,8 @@ const War = {
   tutSteps() {
     return [
       { t: 'Kampf um Liechtenstein', b: `Du führst eine Gemeinde. Wer ${WIN_SHARE * 100} % des Landes hält, gewinnt. Die anderen zehn Gemeinden spielt der Computer.` },
-      { sel: '#wTroopsBox', t: 'Truppen', b: 'Deine Truppen, dahinter das Maximum und das Wachstum pro Sekunde. Am schnellsten wachsen sie bei etwa der Hälfte des Maximums. AM MAXIMUM WÄCHST NICHTS MEHR: dann angreifen oder Land dazugewinnen.' },
-      { sel: '#wGoldBox', t: 'Gold', b: 'Gold kommt vor allem von den Arbeitsplätzen in deinem Gebiet. Du brauchst es für Gebäude und Söldner.' },
+      { sel: '#wTroopsBox', t: 'Truppen', b: 'Deine Truppen, dahinter das Maximum und das Wachstum pro Sekunde. Das Maximum steigt mit deiner Fläche und deinen Siedlungen. Am schnellsten wachsen sie bei etwa der Hälfte des Maximums. AM MAXIMUM WÄCHST NICHTS MEHR: dann angreifen oder Land dazugewinnen.' },
+      { sel: '#wGoldBox', t: 'Gold', b: 'Gold kommt von den Einwohnern und Arbeitsplätzen in deinem Gebiet: Dorfzentren und Gewerbegebiete machen reich. Du brauchst es für Gebäude und Söldner.' },
       { sel: '#wScoreBox', t: 'Punkte', b: 'Neutrales Feld 1 Punkt, feindliches Feld 3, Gebäude 50, ausgelöschte Gemeinde 5000, Sieg 50000 plus Zeitbonus. Schwache Startgemeinden zählen mehr (Faktor bis ×3).' },
       { sel: '#w3d', t: 'Ansicht und Hilfe', b: 'Ziehen verschiebt die Karte, Mausrad oder zwei Finger zoomen. Zwei Finger gemeinsam hoch oder runter kippen die Karte in 3D, Drehen dreht sie. Am Computer mit der rechten Maustaste. Der Knopf 3D/2D schaltet um. Während die Anleitung offen ist, ruht das Spiel. Mit ? kommt sie wieder.' },
       { sel: '#wBoard', t: 'Rangliste und Bündnisse', b: 'Die drei Führenden. Aufklappen zeigt alle Gemeinden. Mit ' + Spr.img('pakt', 1) + ' bietest du ein Bündnis an (5 Minuten). Verbündete greifen sich nicht an. Wer ein Bündnis bricht, gilt 30 s als Verräter.' },

@@ -9,7 +9,7 @@ const SPRITES = {
   gold: ['..YYYY..', '.YAAAAY.', 'YAYYYYAY', 'YAYYYYAY', 'YAYYYYAY', 'YAYYYYAY', '.YAAAAY.', '..YYYY..'],
   stern: ['...YY...', '...YY...', 'YYYYYYYY', '.YYYYYY.', '..YYYY..', '.YY..YY.', 'YY....YY', '........'],
   fahne: ['W.......', 'WBBBBB..', 'WBBBBB..', 'WRRRRR..', 'WRRRRR..', 'W.......', 'W.......', 'W.......'],
-  pakt: ['........', 'BB....RR', 'BBSSSSRR', 'BBSSSSRR', 'BB.SS.RR', '........', '........', '........'],
+  pakt: ['........', 'BB....RR', 'BBB..RRR', '.BBSSRR.', '..SSSS..', '...SS...', '........', '........'],   // Handschlag
   pokal: ['YYYYYYYY', 'Y.YYYY.Y', 'Y.YYYY.Y', '.YYYYYY.', '..YYYY..', '...YY...', '..YYYY..', '.YYYYYY.'],
   warn: ['...RR...', '...RR...', '...RR...', '...RR...', '...RR...', '........', '...RR...', '...RR...'],
   bruch: ['R......R', '.R....R.', '..R..R..', '...RR...', '...RR...', '..R..R..', '.R....R.', 'R......R'],
