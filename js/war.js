@@ -265,7 +265,7 @@ const War = {
     this.owner[i] = pid;
     if (pid) { const p = this.players[pid - 1]; p.cells++; p.pers += M.pers[i]; p.jobs += M.jobs[i]; }
     if (!silent && this.me) { if (pid === this.me.id) { this.score += old ? 3 : 1; this.conq = (this.conq || 0) + 1; } else if (old === this.me.id) this.lost = (this.lost || 0) + 1; }
-    for (const b of this.buildings) if (b.i === i && b.owner !== pid) { b.owner = pid; if (!silent && pid === this.me.id) this.log(`${WAR_BUILD[b.type].name} erobert!`); }
+    for (const b of this.buildings) if (b.i === i && b.owner !== pid) { const was = b.owner; b.owner = pid; if (!silent && pid === this.me.id) this.log(`${WAR_BUILD[b.type].name} erobert!`); if (!silent && was === this.me.id) { this.log(`Deine ${WAR_BUILD[b.type].name} ist verloren!`, 'bad'); snd('lost'); } }
     if (!silent) { this.paint(i); const w = M.w; this.paint(i - 1); this.paint(i + 1); this.paint(i - w); this.paint(i + w); }
   },
   defense(i, pid) {
@@ -343,7 +343,7 @@ const War = {
   eliminate(p, by) {
     p.alive = false; p.troops = 0; this.attacks = this.attacks.filter(a => a.att !== p.id);
     for (const b of this.buildings) if (b.owner === p.id) b.owner = by.id;
-    by.gold += Math.round(p.gold); p.gold = 0; if (by === this.me) { this.score += 5000; snd('fanfare'); }
+    by.gold += Math.round(p.gold); p.gold = 0; if (by === this.me) { this.score += 5000; snd('conquest'); }
     this.log(`${p.name} wurde von ${by.name} erobert.`, p === this.me ? 'bad' : by === this.me ? 'good' : '');
     if (p === this.me && !this.over) this.end(false);
   },
@@ -364,6 +364,8 @@ const War = {
       // Aufholhilfe: Niemand fällt unter die Hälfte der durchschnittlichen Truppenstärke (Grundwert ohne Siedlungen)
       const al = this.players.filter(p => p.alive), raw = p => 800 + p.cells * 1.5 + p.pers * 6 + p.jobs * 2;
       this.troopFloor = Math.max(this.startFloor || 0, Math.round(.5 * al.reduce((s, p) => s + raw(p), 0) / Math.max(1, al.length)));
+      // Stimmung des Trommelspiels: leise und langsam bei schwachen Truppen, schneller wenn ein Gegner sich den 50 % nähert
+      if (this.me && this.me.alive && typeof Snd !== 'undefined' && Snd.setMood) Snd.setMood({ low: this.me.troops < this.maxTroops(this.me) * .2, danger: al.some(q => q.bot && q.cells / M.land >= .4) });
       // Kleinstreste nicht künstlich weiterspielen: ab Minute 6 bricht zusammen, wer unter 1 % fällt; jederzeit, wer nach dem Start unter 0,3 % schrumpft
       for (const p of al) { const sh = p.cells / M.land; p.peak = Math.max(p.peak || 0, sh); if (!this.over && ((this.t > COLLAPSE_AFTER && sh < COLLAPSE_SHARE) || (this.t > COLLAPSE_AFTER && p.peak >= .01 && sh < COLLAPSE_MIN))) this.collapse(p); }
     }
@@ -607,7 +609,7 @@ const War = {
   },
   breakPact(a, b, betray) {
     this.pacts.delete(this.pk(a.id, b.id));
-    if (betray) { a.traitorUntil = this.t + TRAITOR_TIME; this.log(`${a.name} bricht das Bündnis mit ${b.name}! ${TRAITOR_TIME} s lang verteidigt ${a.name} schlechter.`, b === this.me ? 'bad' : a === this.me ? 'warn' : ''); }
+    if (betray) { a.traitorUntil = this.t + TRAITOR_TIME; this.log(`${a.name} bricht das Bündnis mit ${b.name}! ${TRAITOR_TIME} s lang verteidigt ${a.name} schlechter.`, b === this.me ? 'bad' : a === this.me ? 'warn' : ''); if (b === this.me) snd('betray'); }
   },
   pactTick() {
     const me = this.me;
@@ -628,6 +630,7 @@ const War = {
     cand.sort((u, v) => v[2] - u[2]);
     const pick = cand.find(c => c[2] > .35 && Math.random() < .7); if (!pick) return;
     const [x, y] = pick;
+    if (y === me) snd('offer');
     if (y === me) this.ask(`${this.boss(x)} bietet dir ein Bündnis an (${PACT_TIME / 60} Minuten).`, 'Annehmen', () => { if (x.alive && !this.allied(x.id, me.id)) this.makePact(x, me); });
     else this.makePact(x, y);
   },

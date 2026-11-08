@@ -91,25 +91,32 @@ const Snd = {
   snare(t, vol, out) { this.hiss(t, .09, vol, 1900, out, .7); this.hiss(t, .05, vol * .6, 5000, out); this.tone(t, 185, .05, 'tri', vol * .9, 120, out); },
   startDrums() {
     this.init(); if (!this.ctx || this.drumming) return;
-    this.drumming = true; const st = 60 / 104 / 4;
+    this.drumming = true; this.mood = {};
     // je Takt 16 Sechzehntel: X betonter Schlag, x leiser Schlag, r Wirbel (zwei schnelle Schläge), . Pause; K Pauke
     const SN = ['X..xX.x.X..xX.r.', 'X.xxX.xxX.x.rrrr', 'X..xX.x.X..xX.r.', 'X...X...XxXxrrX.'];
     const KI = ['K.......K.......', 'K.......K...K...', 'K.......K.......', 'K...K...K.K.K...'];
     this.drm = this.ctx.createGain(); this.drm.gain.setValueAtTime(0, this.ctx.currentTime); this.drm.gain.linearRampToValueAtTime(.8, this.ctx.currentTime + 1.5); this.drm.connect(this.master);
-    const out = this.drm; let t0 = this.ctx.currentTime + .1, next = 0;
+    const out = this.drm; let t = this.ctx.currentTime + .1, next = 0;
     const sched = () => {
       if (!this.drumming) return;
       const horizon = this.ctx.currentTime + .25;
-      while (t0 + next * st < horizon) {
-        const t = t0 + next * st, bar = Math.floor(next / 16) % 4, pos = next % 16, c = SN[bar][pos];
-        if (c === 'X') this.snare(t, .3, out); else if (c === 'x') this.snare(t, .1, out); else if (c === 'r') { this.snare(t, .15, out); this.snare(t + st / 2, .12, out); }
-        if (KI[bar][pos] === 'K') this.tone(t, 105, .2, 'tri', .55, 42, out);
-        next++;
+      while (t < horizon) {
+        // Tempo und Lautstärke je nach Lage: 104 normal, 84 und leiser bei schwachen Truppen, 128 wenn ein Gegner fast gewonnen hat
+        const m = this.mood, bpm = m.danger ? 128 : m.low ? 84 : 104, st = 60 / bpm / 4, v = m.low && !m.danger ? .55 : 1;
+        const bar = Math.floor(next / 16) % 4, pos = next % 16, c = SN[bar][pos];
+        if (m.low && !m.danger) { if (pos === 0 || pos === 3) this.tone(t, 95, .22, 'tri', .6, 40, out); }   // Herzschlag statt Marsch
+        else {
+          if (c === 'X') this.snare(t, .3 * v, out); else if (c === 'x') this.snare(t, .1 * v, out); else if (c === 'r') { this.snare(t, .15 * v, out); this.snare(t + st / 2, .12 * v, out); }
+          if (KI[bar][pos] === 'K') this.tone(t, 105, .2, 'tri', .55, 42, out);
+        }
+        t += st; next++;
       }
       this.dtimer = setTimeout(sched, 50);
     };
     sched();
   },
+  setMood(m) { this.mood = m; },
+  roll(t, dur, vol) { for (let k = 0; k < dur / .045; k++) this.snare(t + k * .045, vol * (.4 + .6 * k * .045 / dur)); },
   stopDrums() {
     if (!this.drumming) return; this.drumming = false; clearTimeout(this.dtimer);
     if (this.drm) { const g = this.drm; g.gain.setTargetAtTime(0, this.ctx.currentTime, .1); setTimeout(() => g.disconnect(), 800); }
@@ -129,10 +136,14 @@ const Snd = {
       case 'start': ['G4', 'C5', 'E5', 'G5'].forEach((x, k) => this.tone(t + k * .09, F(x), .12, this.w25, .14)); this.tone(t + .36, F('C6'), .35, this.w25, .14); break;
       // Fanfarenstoss, wenn dich jemand angreift (Signalhorn: nur Naturtöne G, C, E, G), höchstens alle 4 s
       case 'attack': { if (now - (this._lastAtt || 0) < 4000) break; this._lastAtt = now; const B = [['G4', .09], ['C5', .09], ['E5', .09], ['G5', .32], ['E5', .09], ['G5', .45]]; let k = 0; for (const [x, d] of B) { this.tone(t + k, F(x), d, this.w50, .17); this.tone(t + k, F(x) * 2, d, this.w12, .04); k += d + .03; } break; }
+      case 'conquest': this.hiss(t, .6, .45, 180); this.tone(t, 80, .4, 'tri', .55, 30); ['C5', 'E5', 'G5', 'C6'].forEach((x, k) => this.tone(t + .35 + k * .11, F(x), k === 3 ? .45 : .1, this.w25, .16)); this.tone(t + .35, F('C3'), .8, 'tri', .3); break;
+      case 'betray': this.tone(t, F('E5'), .25, this.w50, .15, F('D#4')); this.tone(t + .02, F('F5'), .25, this.w25, .1, F('E4')); this.tone(t + .28, F('B3'), .5, this.w50, .14, F('A#2')); break;
+      case 'offer': this.tone(t, F('E6'), .5, 'tri', .25); this.tone(t, F('E6') * 2.01, .3, this.w12, .03); this.tone(t + .25, F('C6'), .7, 'tri', .25); this.tone(t + .25, F('C6') * 2.01, .4, this.w12, .03); break;
+      case 'lost': this.hiss(t, .45, .5, 140); this.tone(t, 70, .45, 'tri', .6, 28); this.tone(t + .05, 200, .2, this.w50, .08, 60); break;
       case 'fanfare': ['C5', 'C5', 'C5', 'G5'].forEach((x, k) => this.tone(t + k * .1, F(x), k === 3 ? .4 : .08, this.w25, .15)); break;
       case 'boom': this.hiss(t, .5, .4, 200); this.tone(t, 90, .3, 'tri', .5, 30); break;
       case 'type': this.tone(t, 1500, .015, this.w12, .04); break;
-      case 'win': { const m = ['C5:2', 'C5:1', 'C5:1', 'G5:4', 'E5:2', 'G5:2', 'C6:8']; let k = 0; for (const x of m) { const [nn, l] = x.split(':'); this.tone(t + k * .1, F(nn), l * .1, this.w25, .16); this.tone(t + k * .1, F(nn) / 2, l * .1, 'tri', .25); k += +l; } break; }
+      case 'win': { this.roll(t, 1.1, .32); this.tone(t + 1.1, 90, .3, 'tri', .6, 40); const t2 = t + 1.2; const m = ['C5:2', 'C5:1', 'C5:1', 'G5:4', 'E5:2', 'G5:2', 'C6:8']; let k = 0; for (const x of m) { const [nn, l] = x.split(':'); this.tone(t2 + k * .1, F(nn), l * .1, this.w25, .16); this.tone(t2 + k * .1, F(nn) / 2, l * .1, 'tri', .25); k += +l; } break; }
       case 'lose': ['G4', 'F4', 'E4', 'D4', 'C4'].forEach((x, k) => this.tone(t + k * .22, F(x), .22, this.w50, .14)); this.tone(t + 1.1, F('C3'), .8, 'tri', .3); break;
     }
   },
