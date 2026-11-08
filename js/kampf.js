@@ -88,7 +88,11 @@ const Snd = {
     if (this.mus) { const g = this.mus; g.gain.setTargetAtTime(0, this.ctx.currentTime, .08); setTimeout(() => g.disconnect(), 600); }
   },
   /* ---------- Trommelspiel während der Partie: kleine Trommel und Pauke im Marschtakt, wie aus einem Soundchip der 80er ---------- */
-  snare(t, vol, out) { this.hiss(t, .09, vol, 1900, out, .7); this.hiss(t, .05, vol * .6, 5000, out); this.tone(t, 185, .05, 'tri', vol * .9, 120, out); },
+  // Marschtrommel: Fell (tiefes Rauschband), Schnarrsaiten (hohes Rauschen), Metallkessel (unharmonische Obertöne)
+  snare(t, vol, out) {
+    this.hiss(t, .17, vol * .9, 950, out, .55); this.hiss(t, .08, vol * .45, 4200, out);
+    for (const [f, a] of [[148, .16], [219, .12], [337, .09], [471, .06]]) this.tone(t, f, .07, this.w12, vol * a, f * .93, out);
+  },
   startDrums() {
     this.init(); if (!this.ctx || this.drumming) return;
     this.drumming = true; this.mood = {};
@@ -104,10 +108,10 @@ const Snd = {
         // Tempo und Lautstärke je nach Lage: 104 normal, 84 und leiser bei schwachen Truppen, 128 wenn ein Gegner fast gewonnen hat
         const m = this.mood, bpm = m.danger ? 128 : m.low ? 84 : 104, st = 60 / bpm / 4, v = m.low && !m.danger ? .55 : 1;
         const bar = Math.floor(next / 16) % 4, pos = next % 16, c = SN[bar][pos];
-        if (m.low && !m.danger) { if (pos === 0 || pos === 3) this.tone(t, 95, .22, 'tri', .6, 40, out); }   // Herzschlag statt Marsch
+        if (m.low && !m.danger) { if (pos === 0 || pos === 3) this.tone(t, 68, .26, 'tri', .65, 32, out); }   // Herzschlag statt Marsch
         else {
           if (c === 'X') this.snare(t, .3 * v, out); else if (c === 'x') this.snare(t, .1 * v, out); else if (c === 'r') { this.snare(t, .15 * v, out); this.snare(t + st / 2, .12 * v, out); }
-          if (KI[bar][pos] === 'K') this.tone(t, 105, .2, 'tri', .55, 42, out);
+          if (KI[bar][pos] === 'K') { this.tone(t, 72, .3, 'tri', .6, 33, out); this.hiss(t, .1, .12, 200, out, .8); }
         }
         t += st; next++;
       }
@@ -123,15 +127,15 @@ const Snd = {
   },
   /* ---------- Effekte ---------- */
   play(n) {
-    if (!this.ctx || !this.on || this.ctx.state !== 'running') return; const t = this.ctx.currentTime + .01, F = x => this.f(x);
+    if (!this.ctx || !this.on || this.ctx.state !== 'running') return; const t = this.ctx.currentTime + .01, F = x => this.f(x) * (n === 'lose' ? 1 : .5);   // Effekte eine Oktave tiefer, ausser der Niederlage
     const now = performance.now(); this._last = this._last || {}; if (now - (this._last[n] || 0) < 60) return; this._last[n] = now;
     switch (n) {
-      case 'tap': this.tone(t, 880, .05, this.w25, .12); break;
-      case 'tick': this.tone(t, 1200 + Math.random() * 300, .025, this.w12, .05); break;
+      case 'tap': this.tone(t, 440, .05, this.w25, .12); break;
+      case 'tick': this.tone(t, 420 + Math.random() * 120, .03, this.w25, .05); break;
       case 'charge': this.tone(t, F('C5'), .06, this.w25, .14); this.tone(t + .07, F('G5'), .1, this.w25, .14); break;
       case 'build': this.tone(t, F('E5'), .08, this.w50, .14); this.tone(t + .09, F('C6'), .14, this.w50, .14); this.hiss(t, .05, .1, 3000); break;
-      case 'hit': this.tone(t, 220, .12, this.w50, .12, 90); break;
-      case 'alarm': for (let k = 0; k < 3; k++) { this.tone(t + k * .16, 660, .07, this.w50, .13); this.tone(t + k * .16 + .08, 440, .07, this.w50, .13); } break;
+      case 'hit': this.tone(t, 140, .14, this.w50, .12, 55); break;
+      case 'alarm': for (let k = 0; k < 3; k++) { this.tone(t + k * .16, 330, .07, this.w50, .13); this.tone(t + k * .16 + .08, 220, .07, this.w50, .13); } break;
       case 'pact': ['C5', 'E5', 'G5', 'C6'].forEach((x, k) => this.tone(t + k * .07, F(x), .2, this.w25, .12)); break;
       case 'start': ['G4', 'C5', 'E5', 'G5'].forEach((x, k) => this.tone(t + k * .09, F(x), .12, this.w25, .14)); this.tone(t + .36, F('C6'), .35, this.w25, .14); break;
       // Fanfarenstoss, wenn dich jemand angreift (Signalhorn: nur Naturtöne G, C, E, G), höchstens alle 4 s
