@@ -1,5 +1,5 @@
 'use strict';
-const snd = n => { if (window.Snd) Snd.play(n); };
+const snd = n => { if (typeof Snd !== 'undefined') Snd.play(n); };   // Snd ist eine Konstante, kein window-Eigenschaft
 /* Kampf um Liechtenstein: Gebietsstrategie nach dem Prinzip von OpenFront, vereinfacht.
    Raster 25 m (aus der Pipeline): Gemeinde, Boden, Höhe. Bevölkerung und Arbeitsplätze aus dem Hektarraster.
    11 Gemeinden, eine davon spielst du, die anderen sind Bots. Wer 50 % des Landes hält, gewinnt. */
@@ -14,10 +14,10 @@ const WAR_BUILD = {
 // Schwierigkeit: Wachstum der Computergegner, ab welcher Truppenstärke sie angreifen, Schonfrist für dich, wie viele dich gleichzeitig angreifen, Punkte
 const WAR_LEVELS = {
   leicht: { name: 'LEICHT', grow: .8, attackAt: .55, grace: 180, maxOnMe: 1, score: .6 },
-  normal: { name: 'NORMAL', grow: 1, attackAt: .45, grace: 90, maxOnMe: 2, score: 1 },
+  normal: { name: 'NORMAL', grow: 1, attackAt: .45, grace: 150, maxOnMe: 2, score: 1 },
   schwer: { name: 'SCHWER', grow: 1.12, attackAt: .38, grace: 30, maxOnMe: 4, score: 1.5 },
 };
-const COLLAPSE_AFTER = 360, COLLAPSE_MIN = 0.003, PREY_AFTER = 360, PREY_SHARE = 0.02, MERC_MAX = 4, MERC_PAUSE = 60, BOT_MERC_MAX = 2, COLLAPSE_SHARE = 0.01, WIN_SHARE = 0.5, PACT_TIME = 300, TRAITOR_TIME = 30;
+const LEADER_HUNT_AFTER = 360, LEADER_HUNT_SHARE = 0.1, COLLAPSE_AFTER = 360, COLLAPSE_MIN = 0.003, PREY_AFTER = 360, PREY_SHARE = 0.02, MERC_MAX = 4, MERC_PAUSE = 60, BOT_MERC_MAX = 2, COLLAPSE_SHARE = 0.01, WIN_SHARE = 0.5, PACT_TIME = 300, TRAITOR_TIME = 30;
 
 const War = {
   level: store.get('kampf-level') || 'normal', inited: false, map: null, phase: 'off', speed: 1, halt: new Set(), score: 0, ratio: .3, build: null, cam: { x: 0, y: 0, s: 1, tilt: 0, yaw: 0 },
@@ -195,7 +195,7 @@ const War = {
 
   /* ---------- Spielstart ---------- */
   choose() {
-    const M = this.map; this.phase = 'choose'; this.owner = new Uint8Array(M.N); this.buildings = []; this.attacks = []; this.feed = [];
+    const M = this.map; this.phase = 'choose'; if (this.onPhase) this.onPhase('choose'); this.owner = new Uint8Array(M.N); this.buildings = []; this.attacks = []; this.feed = [];
     this.players = M.names.map((n, k) => ({ id: k + 1, name: n, color: WAR_COLORS[k + 1], troops: 0, gold: 120, cells: 0, pers: 0, jobs: 0, alive: true, bot: true, nextAi: 0, lx: 0, ly: 0 }));
     this.players.forEach((p, k) => { const b = this.startPoints()[k]; p.start = b; p.lx = b % M.w; p.ly = Math.floor(b / M.w); });
     this.cam.tilt = 0; this.cam.yaw = 0; this.update3D(); this.fit(); this.fullRepaint();
@@ -249,7 +249,7 @@ const War = {
     this.trace = { v: 1, session: (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()), gemeinde: this.me.name, level: this.level || 'normal',
       geraet: `${innerWidth}x${innerHeight}${matchMedia('(pointer:coarse)').matches ? ' touch' : ''}`, start: new Date().toISOString(),
       spalten: 't, felder, truppen, max, gold, wachstum, angriffe_auf_mich, eigene_angriffe, gebaeude, top5 [id, felder, truppen]', snaps: [], ev: [] };
-    this.labels(); this.updateHud(); this.layout(); snd('start');
+    this.labels(); this.updateHud(); this.layout(); snd('start'); if (this.onPhase) this.onPhase('play');
     if (!store.get('laendle-kampf-tut')) this.tutorial(0);
   },
 
@@ -290,7 +290,7 @@ const War = {
       if (!cand.length) return false;
       a = { att: pid, def: target, troops: 0, cand, inSet, tx, ty };
       this.attacks.push(a);
-      if (target && this.players[target - 1] === this.me) { this.log(`${this.boss(p)} greift dich an!`, 'bad'); snd('alarm'); if (!this.firstHit) { this.firstHit = true; this.banner('ANGRIFF!', '#ff004d'); } }
+      if (target && this.players[target - 1] === this.me) { this.log(`${this.boss(p)} greift dich an!`, 'bad'); snd('attack'); if (!this.firstHit) { this.firstHit = true; this.banner('ANGRIFF!', '#ff004d'); } }
     }
     a.tx = tx; a.ty = ty; a.troops += troops; p.troops -= troops;
     return true;
@@ -365,7 +365,7 @@ const War = {
       const al = this.players.filter(p => p.alive), raw = p => 800 + p.cells * 1.5 + p.pers * 6 + p.jobs * 2;
       this.troopFloor = Math.max(this.startFloor || 0, Math.round(.5 * al.reduce((s, p) => s + raw(p), 0) / Math.max(1, al.length)));
       // Kleinstreste nicht künstlich weiterspielen: ab Minute 6 bricht zusammen, wer unter 1 % fällt; jederzeit, wer nach dem Start unter 0,3 % schrumpft
-      for (const p of al) { const sh = p.cells / M.land; p.peak = Math.max(p.peak || 0, sh); if (!this.over && ((this.t > COLLAPSE_AFTER && sh < COLLAPSE_SHARE) || (p.peak >= .01 && sh < COLLAPSE_MIN))) this.collapse(p); }
+      for (const p of al) { const sh = p.cells / M.land; p.peak = Math.max(p.peak || 0, sh); if (!this.over && ((this.t > COLLAPSE_AFTER && sh < COLLAPSE_SHARE) || (this.t > COLLAPSE_AFTER && p.peak >= .01 && sh < COLLAPSE_MIN))) this.collapse(p); }
     }
     for (const p of this.players) if (p.bot && p.alive && this.t >= p.nextAi) { this.botThink(p); p.nextAi = this.t + 1.2 + Math.random() * 2.2; }
     if (Math.floor(this.t * 10) % 10 === 0) { this.labels(); this.updateHud(); this.pactTick(); }
@@ -438,7 +438,8 @@ const War = {
   // des Angreifers), und wer das meiste Land hat, ist nie geschützt: der Führende soll gejagt werden.
   shielded(p) {
     const me = this.me; if (!me || !me.alive) return false;
-    if (this.players.every(q => !q.alive || q === me || q.cells <= me.cells)) return false;
+    // Der Führende ist erst ab Minute 6 und ab 10 % Land ungeschützt (vorher führt oft nur, wer am schnellsten tippt)
+    if (this.t > LEADER_HUNT_AFTER && me.cells / this.map.land >= LEADER_HUNT_SHARE && this.players.every(q => !q.alive || q === me || q.cells <= me.cells)) return false;
     const n = this.attacks.filter(a => a.def === me.id && a.att !== p.id && a.troops >= this.maxTroops(this.players[a.att - 1]) * .03).length;
     return n >= this.lvl.maxOnMe;
   },
@@ -479,10 +480,11 @@ const War = {
     // Schlussplatz: Sieger ist Erster; sonst zählen alle Gemeinden, die noch leben und mehr Land haben (wer erobert ist, steht hinter allen Lebenden)
     const others = this.players.filter(q => q !== this.me && q.alive), platz = win ? 1 : this.me.alive ? 1 + others.filter(q => q.cells > this.me.cells).length : 1 + others.length;
     if (this.trace) this.trace.platz = platz;
+    if (this.onPhase) this.onPhase('end');
     snd(win ? 'win' : 'lose'); this.upload(win ? 'sieg' : winner ? 'niederlage:' + winner.name : 'erobert', total);
     if (this.onEnd) this.onEnd({ win, winner, land, min, base: this.score, bonus, factor: this.factor, level: this.lvl, total, platz, gem: this.me.name, color: this.me.color });
   },
-  continueAfterWin() { this.halt.delete('end'); },
+  continueAfterWin() { if (this.onPhase) this.onPhase('play'); this.halt.delete('end'); },
   // Spielverlauf anonym an Supabase senden (Tabelle kampf_protokoll), damit sich die Balance auswerten lässt
   upload(result, total) {
     try {
