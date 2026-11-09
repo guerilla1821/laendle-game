@@ -7,7 +7,7 @@ const snd = n => { if (typeof Snd !== 'undefined') Snd.play(n); };   // Snd ist 
 const WAR_COLORS = ['#000', '#ff004d', '#29adff', '#ffec27', '#00e436', '#ff77a8', '#ffa300', '#83769c', '#ffccaa', '#ab5236', '#c2c3c7', '#fff1e8'];
 const WAR_BUILD = {
   siedlung: { name: 'Siedlung', cost: 220, eff: '+1500 Truppen-Max.', info: 'Erhöht dein Truppen-Maximum um 1500. Mehr Maximum heisst auch schnelleres Wachstum.' },
-  burg: { name: 'Burg', cost: 180, eff: 'Abwehr ×2, 300 m', info: 'Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen pro Feld. Bau sie an die Grenze zu starken Nachbarn.' },
+  burg: { name: 'Burg', cost: 1200, eff: 'Abwehr ×3, 500 m', info: 'Gegner brauchen im Umkreis von 500 m dreimal so viele Truppen pro Feld. Bau sie an die Grenze zu starken Nachbarn.' },
   markt: { name: 'Markt', cost: 260, eff: '+6 Gold/s', info: 'Bringt 6 Gold pro Sekunde zusätzlich.' },
   soeldner: { name: 'Söldner', cost: 400, eff: '+20 % Truppen', info: 'Sofort Truppen in Höhe von 20 % deines Maximums. Du kannst 4 Mal pro Partie anwerben, jede Anwerbung kostet doppelt so viel, danach 60 s Pause.' },
 };
@@ -28,6 +28,8 @@ const WAR_MODELS = {
 const FL_E = (() => { try { const e = +new URLSearchParams(location.search).get('exp'); return e > .3 && e <= 1 ? e : .9; } catch (x) { return .9; } })();
 const FL_A = 37000 / (Math.pow(12000, FL_E) - Math.pow(600, FL_E)), FL_B = 8000 - FL_A * Math.pow(600, FL_E);
 const WAR_MODEL = (() => { try { const m = new URLSearchParams(location.search).get('modell'); return WAR_MODELS[m] ? m : 'flaeche'; } catch (e) { return 'flaeche'; } })();
+const BURG_R = 20, BURG_F = 3;   // Burg: Radius in Feldern (25 m), Faktor für Angreifer
+const LEADER_HUNT = false;   // Jagd auf den Führenden ausgeschaltet (9.11.2026, zum Ausprobieren)
 const LEADER_HUNT_AFTER = 360, LEADER_HUNT_SHARE = 0.1, COLLAPSE_AFTER = 360, COLLAPSE_MIN = 0.003, PREY_AFTER = 360, PREY_SHARE = 0.02, MERC_MAX = 4, MERC_PAUSE = 60, BOT_MERC_MAX = 2, COLLAPSE_SHARE = 0.01, WIN_SHARE = 0.5, PACT_TIME = 300, TRAITOR_TIME = 30;
 
 const War = {
@@ -276,12 +278,12 @@ const War = {
     this.owner[i] = pid;
     if (pid) { const p = this.players[pid - 1]; p.cells++; p.pers += M.pers[i]; p.jobs += M.jobs[i]; }
     if (!silent && this.me) { if (pid === this.me.id) { this.score += old ? 3 : 1; this.conq = (this.conq || 0) + 1; } else if (old === this.me.id) this.lost = (this.lost || 0) + 1; }
-    for (const b of this.buildings) if (b.i === i && b.owner !== pid) { const was = b.owner; b.owner = pid; if (!silent && pid === this.me.id) this.log(`${WAR_BUILD[b.type].name} erobert!`); if (!silent && was === this.me.id) { this.log(`Deine ${WAR_BUILD[b.type].name} ist verloren!`, 'bad'); snd('lost'); } }
+    for (const b of this.buildings) if (b.i === i && b.owner !== pid) { const was = b.owner; b.owner = pid; if (!silent && pid === this.me.id) this.log(`${WAR_BUILD[b.type].name} erobert!`); if (!silent && was === this.me.id) { const q = this.lostQ || (this.lostQ = {}); q[b.type] = (q[b.type] || 0) + 1; } }
     if (!silent) { this.paint(i); const w = M.w; this.paint(i - 1); this.paint(i + 1); this.paint(i - w); this.paint(i + w); }
   },
   defense(i, pid) {
     let f = 1;
-    for (const b of this.buildings) if (b.type === 'burg' && b.owner === pid) { const M = this.map, dx = b.i % M.w - i % M.w, dy = Math.floor(b.i / M.w) - Math.floor(i / M.w); if (dx * dx + dy * dy < 144) { f = 2; break; } }
+    for (const b of this.buildings) if (b.type === 'burg' && b.owner === pid) { const M = this.map, dx = b.i % M.w - i % M.w, dy = Math.floor(b.i / M.w) - Math.floor(i / M.w); if (dx * dx + dy * dy < BURG_R * BURG_R) { f = BURG_F; break; } }
     return f;
   },
   neighbors(i) { const M = this.map, x = i % M.w, out = []; if (x > 0) out.push(i - 1); if (x < M.w - 1) out.push(i + 1); if (i >= M.w) out.push(i - M.w); if (i < M.N - M.w) out.push(i + M.w); return out; },
@@ -375,6 +377,9 @@ const War = {
       // Aufholhilfe: Niemand fällt unter die Hälfte der durchschnittlichen Truppenstärke (Grundwert ohne Siedlungen)
       const al = this.players.filter(p => p.alive), raw = p => WAR_MODELS[WAR_MODEL].raw(p.cells, p.pers, p.jobs);
       this.troopFloor = Math.max(this.startFloor || 0, Math.round(.5 * al.reduce((s, p) => s + raw(p), 0) / Math.max(1, al.length)));
+      // verlorene Gebäude gesammelt melden (eine Meldung und ein Ton statt einer Flut)
+      if (this.lostQ) { const q = this.lostQ, n = Object.values(q).reduce((a, b) => a + b, 0), pl = { burg: ['Burg', 'Burgen'], siedlung: ['Siedlung', 'Siedlungen'], markt: ['Markt', 'Märkte'] };
+        this.log(n === 1 ? `Deine ${pl[Object.keys(q)[0]][0]} ist verloren!` : `${n} Gebäude verloren: ${Object.entries(q).map(([k, v]) => v + ' ' + pl[k][v > 1 ? 1 : 0]).join(', ')}.`, 'bad'); snd('lost'); this.lostQ = null; }
       // Stimmung des Trommelspiels: leise und langsam bei schwachen Truppen, schneller wenn ein Gegner sich den 50 % nähert
       if (this.me && this.me.alive && typeof Snd !== 'undefined' && Snd.setMood) Snd.setMood({ low: this.me.troops < this.maxTroops(this.me) * .2, danger: al.some(q => q.bot && q.cells / M.land >= .4) });
       // Kleinstreste nicht künstlich weiterspielen: ab Minute 6 bricht zusammen, wer unter 1 % fällt; jederzeit, wer nach dem Start unter 0,3 % schrumpft
@@ -452,7 +457,7 @@ const War = {
   shielded(p) {
     const me = this.me; if (!me || !me.alive) return false;
     // Der Führende ist erst ab Minute 6 und ab 10 % Land ungeschützt (vorher führt oft nur, wer am schnellsten tippt)
-    if (this.t > LEADER_HUNT_AFTER && me.cells / this.map.land >= LEADER_HUNT_SHARE && this.players.every(q => !q.alive || q === me || q.cells <= me.cells)) return false;
+    if (LEADER_HUNT && this.t > LEADER_HUNT_AFTER && me.cells / this.map.land >= LEADER_HUNT_SHARE && this.players.every(q => !q.alive || q === me || q.cells <= me.cells)) return false;
     const n = this.attacks.filter(a => a.def === me.id && a.att !== p.id && a.troops >= this.maxTroops(this.players[a.att - 1]) * .03).length;
     return n >= this.lvl.maxOnMe;
   },
@@ -663,7 +668,7 @@ const War = {
       { sel: '#wBoard', t: 'Rangliste und Bündnisse', b: 'Die drei Führenden. Aufklappen zeigt alle Gemeinden. Mit ' + Spr.img('pakt', 1) + ' bietest du ein Bündnis an (5 Minuten). Verbündete greifen sich nicht an. Wer ein Bündnis bricht, gilt 30 s als Verräter.' },
       { sel: '#wc', t: 'Ausbreiten', b: 'Tippe auf ungefärbtes Land neben deinem Gebiet. Talboden ist billig, Hang, Wald und Berge kosten viel mehr Truppen pro Feld. Hauptstrassen sind billig, Wasser geht nicht. Freies Land deiner eigenen Gemeinde kostet nur die Hälfte, fremdes mehr. Und daheim verteidigst du dich besser (Heimvorteil).' },
       { sel: '.wr', t: 'Angriffsstärke', b: 'So viel Prozent deiner Truppen schickt ein Tippen los. Nicht verbrauchte Truppen kehren zurück. Nachbarn kosten mehr, je dichter sie besetzt sind.' },
-      { sel: '#wBuild', t: 'Gebäude und Söldner', b: 'SIEDLUNG: +1500 Truppen-Maximum, also schnelleres Wachstum.<br>BURG: Gegner brauchen im Umkreis von 300 m doppelt so viele Truppen.<br>MARKT: +6 Gold pro Sekunde.<br>SÖLDNER: sofort Truppen in Höhe von 20 % deines Maximums. Du kannst pro Partie 4 Mal anwerben, jedes Mal doppelt so teuer (400, 800, 1600, 3200 Gold), danach 60 s Pause. Die Zahl oben rechts am Knopf zeigt, wie oft du noch kannst.<br>Jedes weitere Gebäude derselben Art wird teurer.' },
+      { sel: '#wBuild', t: 'Gebäude und Söldner', b: 'SIEDLUNG: +1500 Truppen-Maximum, also schnelleres Wachstum.<br>BURG: Gegner brauchen im Umkreis von 500 m dreimal so viele Truppen pro Feld.<br>MARKT: +6 Gold pro Sekunde.<br>SÖLDNER: sofort Truppen in Höhe von 20 % deines Maximums. Du kannst pro Partie 4 Mal anwerben, jedes Mal doppelt so teuer (400, 800, 1600, 3200 Gold), danach 60 s Pause. Die Zahl oben rechts am Knopf zeigt, wie oft du noch kannst.<br>Jedes weitere Gebäude derselben Art wird teurer.' },
     ];
   },
   tutorial(k) {
@@ -732,7 +737,7 @@ const War = {
     const font = this.labelFont || 'monospace';
     if (this.phase === 'play') {
       g.setLineDash([2, 4]); g.lineWidth = 2;
-      for (const b of this.buildings) if (b.type === 'burg' && b.owner === this.me.id) { const bx = b.i % M.w + .5, by = Math.floor(b.i / M.w) + .5; g.strokeStyle = '#fff1e8'; g.beginPath(); for (let k = 0; k <= 24; k++) { const a = k / 24 * Math.PI * 2, [x, y] = P(bx + Math.cos(a) * 12, by + Math.sin(a) * 12); k ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); }
+      for (const b of this.buildings) if (b.type === 'burg' && b.owner === this.me.id) { const bx = b.i % M.w + .5, by = Math.floor(b.i / M.w) + .5; g.strokeStyle = '#fff1e8'; g.beginPath(); for (let k = 0; k <= 24; k++) { const a = k / 24 * Math.PI * 2, [x, y] = P(bx + Math.cos(a) * BURG_R, by + Math.sin(a) * BURG_R); k ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); }
       g.setLineDash([]);
       const sc = s >= 3 ? 3 : s >= 1.5 ? 2 : 1;
       for (const b of this.buildings) {
