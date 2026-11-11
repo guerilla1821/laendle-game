@@ -28,6 +28,30 @@ const WAR_MODELS = {
 const FL_E = (() => { try { const e = +new URLSearchParams(location.search).get('exp'); return e > .3 && e <= 1 ? e : .9; } catch (x) { return .9; } })();
 const FL_A = 37000 / (Math.pow(12000, FL_E) - Math.pow(600, FL_E)), FL_B = 8000 - FL_A * Math.pow(600, FL_E);
 const WAR_MODEL = (() => { try { const m = new URLSearchParams(location.search).get('modell'); return WAR_MODELS[m] ? m : 'flaeche'; } catch (e) { return 'flaeche'; } })();
+// Eigenschaften der Oberhäupter: eine Stärke, eine Schwäche, eine Geheimwaffe (einmal pro Partie). Gelten für dich und die Computergegner.
+// def: Faktor für Angreifer überall, defAt(höhe, bodenart)/defHome: nur dort, atk(höhe): eigene Angriffskosten, speed: Vorrücken, grow/gold/max: Faktoren
+const WAR_TRAITS = {
+  Balzers: { plus: 'Angreifer zahlen überall 25 % mehr.', minus: 'Deine Angriffe rücken 25 % langsamer vor.', def: 1.25, speed: .75, w: { id: 'rush', name: 'Hafalääb-Rennen', text: '30 s lang rücken deine Angriffe dreimal so schnell vor.', dur: 30, off: true } },
+  Eschen: { plus: 'Truppen wachsen 10 % schneller.', minus: 'Andere nehmen deine Bündnisse seltener an.', grow: 1.1, pact: -.15, w: { id: 'volley', name: 'Kolpa-Katapult', text: 'Alle Nachbarn, die nicht mit dir verbündet sind, verlieren sofort 15 % ihrer Truppen.', dur: 0, off: true } },
+  Gamprin: { plus: 'Deine Angriffe rücken 20 % schneller vor.', minus: 'Truppen-Maximum 7 % kleiner.', speed: 1.2, max: .93, w: { id: 'wet', name: 'Gampriner Seele', text: '30 s lang kosten Angriffe auf dich das Doppelte.', dur: 30 } },
+  Mauren: { plus: 'In deinem Wald zahlen Angreifer 50 % mehr.', minus: 'Eigene Angriffe über 600 m kosten 10 % mehr.', defAt: (h, cls) => cls === 3 ? 1.5 : 1, atk: h => h >= 600 ? 1.1 : 1, w: { id: 'refill', name: 'Brunnenmarsch', text: 'Sofort Truppen in Höhe von 40 % deines Maximums.', dur: 0 } },
+  Planken: { plus: 'Im Gebiet der Gemeinde Planken zahlen Angreifer 50 % mehr.', minus: '15 % weniger Gold.', defHome: 1.5, gold: .85, w: { id: 'fortress', name: 'Drei Schwestern', text: '60 s lang kostet dein Heimatgebiet Angreifer das Fünffache.', dur: 60 } },
+  Ruggell: { plus: 'Eigene Angriffe unter 600 m kosten 20 % weniger.', minus: 'Über 900 m kosten sie 30 % mehr.', atk: h => h < 600 ? .8 : h >= 900 ? 1.3 : 1, w: { id: 'pause', name: 'Sibirische Schwertlilie', text: 'Alle Angriffe auf dich enden sofort, und 25 s lang greift dich niemand an.', dur: 25 } },
+  Schaan: { plus: 'Truppen-Maximum 5 % grösser.', minus: 'Angreifer zahlen überall 20 % weniger.', max: 1.05, def: .8, w: { id: 'esel', name: 'Palmesel', text: '30 s lang ignorieren deine Angriffe Burgen und Heimvorteil.', dur: 30, off: true } },
+  Schellenberg: { plus: 'Burgen kosten die Hälfte.', minus: 'Siedlungen kosten 50 % mehr.', cost: { burg: .5, siedlung: 1.5 }, w: { id: 'shell', name: 'Burgen-Hütchenspiel', text: 'Alle Angriffe auf dich verlieren sofort die Hälfte ihrer Truppen.', dur: 0 } },
+  Triesen: { plus: 'Eigene Angriffe über 900 m kosten 30 % weniger.', minus: 'Unter 600 m kosten sie 15 % mehr.', atk: h => h >= 900 ? .7 : h < 600 ? 1.15 : 1, w: { id: 'candle', name: 'Kerzeten', text: '45 s lang wachsen deine Truppen doppelt so schnell.', dur: 45, off: true } },
+  Triesenberg: { plus: 'Über 900 m zahlen Angreifer 40 % mehr.', minus: 'Eigene Angriffe unter 600 m kosten 25 % mehr.', defAt: h => h >= 900 ? 1.4 : 1, atk: h => h < 600 ? 1.25 : 1, w: { id: 'dialect', name: 'Walserdialekt', text: '30 s lang zählt bei deinen Angriffen die Truppendichte der Gegner nicht.', dur: 30, off: true } },
+  Vaduz: { plus: '25 % mehr Gold.', minus: 'Deine Angriffe rücken 10 % langsamer vor.', gold: 1.25, speed: .9, w: { id: 'firework', name: 'Staatsfeiertags-Feuerwerk', text: '30 s lang kosten deine Angriffe die Hälfte.', dur: 30, off: true } },
+};
+// Ereignisse im Ländle: alle 2,5 bis 3,5 Minuten eines, für alle gleich
+const WAR_EVENTS = [
+  { id: 'foehn', name: 'FÖHNSTURM', dur: 30, text: 'Unter 600 m verteidigen alle schlechter: Angriffe kosten dort 40 % weniger.' },
+  { id: 'hochwasser', name: 'RHEINHOCHWASSER', dur: 30, text: 'Der Talboden am Rhein steht unter Wasser: Dort kostet jedes Feld das Doppelte.' },
+  { id: 'feiertag', name: 'STAATSFEIERTAG', dur: 30, text: 'Alle bekommen doppeltes Gold.' },
+  { id: 'fasnacht', name: 'FASNACHT', dur: 25, text: 'feiert Fasnacht: Dort wachsen so lange keine Truppen nach.' },
+  { id: 'winter', name: 'WINTEREINBRUCH', dur: 30, text: 'Schnee in den Bergen: Über 1200 m kostet jedes Feld das Doppelte.' },
+];
+const EASE_AFTER = 720, EASE_SPAN = 600, EASE_MIN = .3;   // ab Minute 12 sinken die Kosten für Angriffe auf Gegner in 10 Minuten auf 30 %
 const BURG_R = 20, BURG_F = 3;   // Burg: Radius in Feldern (25 m), Faktor für Angreifer
 const LEADER_HUNT = false;   // Jagd auf den Führenden ausgeschaltet (9.11.2026, zum Ausprobieren)
 const LEADER_HUNT_AFTER = 360, LEADER_HUNT_SHARE = 0.1, COLLAPSE_AFTER = 360, PREY_AFTER = 360, PREY_SHARE = 0.02, MERC_MAX = 4, MERC_PAUSE = 60, BOT_MERC_MAX = 2, COLLAPSE_SHARE = 0.01, WIN_SHARE = 0.5, PACT_TIME = 300, TRAITOR_TIME = 30;
@@ -47,7 +71,7 @@ const War = {
   },
   exit() {
     if (this.phase === 'play' && !this.over) this.upload('abgebrochen');
-    this.phase = 'off'; this.halt.clear(); $('#warScreen').hidden = true; $('#wTut').hidden = true; if (this.onExit) this.onExit();
+    this.phase = 'off'; this.halt.clear(); this.closeMenu(); $('#warScreen').hidden = true; $('#wTut').hidden = true; if (this.onExit) this.onExit();
   },
   init() {
     if (this.inited) return; this.inited = true;
@@ -59,8 +83,12 @@ const War = {
       $('#wTip').hidden = true; c.setPointerCapture(e.pointerId);
       if (e.button === 2) { rdrag = { x: e.clientX, y: e.clientY, t: this.cam.tilt, w: this.cam.yaw }; return; }   // rechte Maustaste: kippen und drehen
       pts.set(e.pointerId, [e.clientX, e.clientY]);
-      if (pts.size === 1) down = { x: e.clientX, y: e.clientY, cx: this.cam.x, cy: this.cam.y, moved: false };
-      if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), s: this.cam.s, my: (a[1] + b[1]) / 2, an: Math.atan2(b[1] - a[1], b[0] - a[0]), t: this.cam.tilt, w: this.cam.yaw }; down = null; }
+      if (pts.size === 1) {
+        const d = down = { x: e.clientX, y: e.clientY, cx: this.cam.x, cy: this.cam.y, moved: false };
+        // langer Druck (Finger oder Maus): Feld-Info statt Angriff
+        clearTimeout(this._lp); this._lp = setTimeout(() => { if (down === d && !d.moved && pts.size === 1) { d.moved = true; this.hover(d.x, d.y, true); } }, 480);
+      }
+      if (pts.size === 2) { clearTimeout(this._lp); const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), s: this.cam.s, my: (a[1] + b[1]) / 2, an: Math.atan2(b[1] - a[1], b[0] - a[0]), t: this.cam.tilt, w: this.cam.yaw }; down = null; }
     });
     c.addEventListener('pointermove', e => {
       if (rdrag) { this.cam.tilt = clamp(rdrag.t + (rdrag.y - e.clientY) * .006, 0, 1.15); this.cam.yaw = rdrag.w + (e.clientX - rdrag.x) * .006; this.update3D(); return; }
@@ -76,13 +104,13 @@ const War = {
         this.update3D(); return;
       }
       if (down) {
-        const dx = e.clientX - down.x, dy = e.clientY - down.y; if (Math.hypot(dx, dy) > 8) down.moved = true;
+        const dx = e.clientX - down.x, dy = e.clientY - down.y; if (Math.hypot(dx, dy) > 8) { if (!down.moved || !$('#wTip').hidden) $('#wTip').hidden = true; down.moved = true; clearTimeout(this._lp); }
         if (down.moved) { const cy = Math.cos(this.cam.yaw), sy = Math.sin(this.cam.yaw), s = this.cam.s; this.cam.x = down.cx - (cy * dx + sy * dy) / s; this.cam.y = down.cy - (-sy * dx + cy * dy) / s; this.clampCam(); }
       }
     });
     const up = e => {
       if (rdrag) { rdrag = null; return; }
-      if (!pts.has(e.pointerId)) return; pts.delete(e.pointerId); if (pts.size < 2) pinch = null;
+      clearTimeout(this._lp); if (!pts.has(e.pointerId)) return; pts.delete(e.pointerId); if (pts.size < 2) pinch = null;
       if (down && !down.moved && pts.size === 0) this.tap(e.clientX, e.clientY); if (pts.size === 0) down = null;
     };
     c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
@@ -98,6 +126,7 @@ const War = {
       if (!this.me || this.me.gold < this.costOf(this.me, t)) { toast(`Zu wenig Gold für ${WAR_BUILD[t].name}: ${fmtK(this.costOf(this.me, t))} nötig.`); return; }
       this.build = t; this.updateBuildBtns(); toast(`${WAR_BUILD[t].name}: Tippe auf dein Gebiet. Nochmal auf den Knopf tippen bricht ab.`);
     });
+    $('#wWeapon').onclick = () => { const me = this.me; if (!me || this.phase !== 'play' || this.over) return; if (me.wUsed) { toast('Deine Geheimwaffe ist für diese Partie verbraucht.'); return; } this.useWeapon(me); };
     let last = performance.now(), acc = 0;
     const loop = t => {
       const dt = Math.min(.25, (t - last) / 1000); last = t;
@@ -209,10 +238,10 @@ const War = {
   /* ---------- Spielstart ---------- */
   choose() {
     const M = this.map; this.phase = 'choose'; if (this.onPhase) this.onPhase('choose'); this.owner = new Uint8Array(M.N); this.buildings = []; this.bAt = new Map(); this.attacks = []; this.feed = [];
-    this.players = M.names.map((n, k) => ({ id: k + 1, name: n, color: WAR_COLORS[k + 1], troops: 0, gold: 120, cells: 0, pers: 0, jobs: 0, alive: true, bot: true, nextAi: 0, lx: 0, ly: 0 }));
+    this.players = M.names.map((n, k) => ({ id: k + 1, name: n, tr: WAR_TRAITS[n] || {}, color: WAR_COLORS[k + 1], troops: 0, gold: 120, cells: 0, pers: 0, jobs: 0, alive: true, bot: true, nextAi: 0, lx: 0, ly: 0 }));
     this.players.forEach((p, k) => { const b = this.startPoints()[k]; p.start = b; p.lx = b % M.w; p.ly = Math.floor(b / M.w); });
     this.cam.tilt = 0; this.cam.yaw = 0; this.update3D(); this.fit(); this.fullRepaint();
-    $('#wHud').hidden = true; $('#wBottom').hidden = true; $('#wBoard').hidden = true; $('#wFeed').innerHTML = ''; $('#wChoose').hidden = false;
+    $('#wHud').hidden = true; $('#wBottom').hidden = true; $('#wBoard').hidden = true; $('#wFeed').innerHTML = ''; $('#wEvent').hidden = true; this.closeMenu(); $('#wChoose').hidden = false;
     $('#wChoose').innerHTML = `<b>Wähle deine Gemeinde</b><span>Tippe auf die Karte oder hier. Wer wer ist, steht im Menü unter DIE GEMEINDEN.</span><div class="wlvl">${Object.entries(WAR_LEVELS).map(([k, l]) => `<button data-l="${k}" aria-pressed="${(this.level || 'normal') === k}">${l.name}</button>`).join('')}</div><div class="wgems">${this.players.map(p => `<button data-g="${p.id}" style="--c:${p.color}">${typeof GEM_INFO !== 'undefined' && GEM_INFO[p.name] ? Spr.portraitImg(GEM_INFO[p.name].avatar, 1, '') : ''}${esc(p.name)}</button>`).join('')}</div>`;
     $('#wChoose').querySelectorAll('button[data-g]').forEach(b => b.onclick = () => this.startGame(+b.dataset.g));
     $('#wChoose').querySelectorAll('button[data-l]').forEach(b => b.onclick = () => { this.level = b.dataset.l; store.set('kampf-level', this.level); $('#wChoose').querySelectorAll('button[data-l]').forEach(x => x.setAttribute('aria-pressed', x === b)); snd('tap'); });
@@ -241,10 +270,10 @@ const War = {
   startGame(gid) {
     const M = this.map; this.me = this.players[gid - 1]; this.me.bot = false;
     this.lvl = WAR_LEVELS[this.level || 'normal']; const gs = this.gemStats(); this.startFloor = this.troopFloor = Math.round(gs.reduce((s, q) => s + q.startMax, 0) / gs.length); this.startCells = 0; this.warnedShrink = 0;
-    this.owner.fill(0); this.buildings = []; this.attacks = []; this.feed = []; this.t = 0; this.tk = 0; this.game = (this.game || 0) + 1; this.bAt = new Map(); this.conq = 0; this.lost = 0; this.lostQ = null; this.build = null; this.over = false; this.score = 0; this.firstHit = false; this.pacts = new Map(); this.lastHit = {}; this.refused = {}; this.maxWarned = -999; this.nextOffer = 60;
+    this.owner.fill(0); this.buildings = []; this.attacks = []; this.feed = []; this.t = 0; this.tk = 0; this.game = (this.game || 0) + 1; this.bAt = new Map(); this.conq = 0; this.lost = 0; this.lostQ = null; this.had = new Uint8Array(M.N); this.ease = 1; this.event = null; this.nextEv = 170 + Math.random() * 50; this.easeSaid = 0; this.closeMenu(); this.build = null; this.over = false; this.score = 0; this.firstHit = false; this.pacts = new Map(); this.lastHit = {}; this.refused = {}; this.maxWarned = -999; this.nextOffer = 60;
     const R = 14;
     for (const p of this.players) {
-      p.cells = p.pers = p.jobs = 0; p.alive = true; p.gold = 120; p.traitorUntil = 0; p.merc = 0; p.mercT = -1e9; p.peak = 0; p.growth = 0; p.goldRate = 0; p.nextAi = 20 + Math.random() * 20;
+      p.cells = p.pers = p.jobs = 0; p.alive = true; p.gold = 120; p.traitorUntil = 0; p.wUsed = false; p.wUntil = 0; p.safeUntil = 0; p.helpT = 0; p.merc = 0; p.mercT = -1e9; p.peak = 0; p.growth = 0; p.goldRate = 0; p.nextAi = 20 + Math.random() * 20;
       const sx = p.start % M.w, sy = Math.floor(p.start / M.w);
       for (let y = sy - R; y <= sy + R; y++) for (let x = sx - R; x <= sx + R; x++) {
         if (x < 0 || y < 0 || x >= M.w || y >= M.h || (x - sx) ** 2 + (y - sy) ** 2 > R * R) continue;
@@ -269,15 +298,17 @@ const War = {
   // Kurzname des Oberhaupts für Meldungen
   boss(p) { const g = typeof GEM_INFO !== 'undefined' && GEM_INFO[p.name]; return g ? `${g.short} (${p.name})` : p.name; },
   /* ---------- Regeln ---------- */
-  maxTroops(p) { return Math.round(Math.max(this.troopFloor || 0, WAR_MODELS[WAR_MODEL].raw(p.cells, p.pers, p.jobs)) + 1500 * Math.pow(this.count(p, 'siedlung'), .7)); },
+  wOn(p, id) { const w = p.tr.w; return !!w && w.id === id && p.wUntil > this.t; },
+  maxTroops(p) { return Math.round(Math.max(this.troopFloor || 0, WAR_MODELS[WAR_MODEL].raw(p.cells, p.pers, p.jobs)) * (p.tr.max || 1) + 1500 * Math.pow(this.count(p, 'siedlung'), .7)); },
   count(p, type) { let n = 0; for (const b of this.buildings) if (b.owner === p.id && b.type === type) n++; return n; },
-  costOf(p, type) { if (type === 'soeldner') return Math.round(WAR_BUILD.soeldner.cost * Math.pow(2, p.merc || 0)); let n = 0; for (const b of this.buildings) if (b.by === p.id && b.type === type) n++; return Math.round(WAR_BUILD[type].cost * Math.pow(1.5, n)); },
+  costOf(p, type) { if (type === 'soeldner') return Math.round(WAR_BUILD.soeldner.cost * Math.pow(2, p.merc || 0)); let n = 0; for (const b of this.buildings) if (b.by === p.id && b.type === type) n++; return Math.round(WAR_BUILD[type].cost * Math.pow(1.5, n) * (p.tr.cost && p.tr.cost[type] || 1)); },
   setOwner(i, pid, silent) {
     const M = this.map, old = this.owner[i];
     if (old) { const q = this.players[old - 1]; q.cells--; q.pers -= M.pers[i]; q.jobs -= M.jobs[i]; }
     this.owner[i] = pid;
     if (pid) { const p = this.players[pid - 1]; p.cells++; p.pers += M.pers[i]; p.jobs += M.jobs[i]; }
-    if (!silent && this.me) { if (pid === this.me.id) { this.score += old ? 3 : 1; this.conq = (this.conq || 0) + 1; } else if (old === this.me.id) this.lost = (this.lost || 0) + 1; }
+    if (this.me && pid === this.me.id) { if (!silent) { if (!this.had[i]) this.score += old ? 3 : 1; this.conq = (this.conq || 0) + 1; } this.had[i] = 1; }
+    else if (!silent && this.me && old === this.me.id) this.lost = (this.lost || 0) + 1;
     const b = this.bAt.get(i); if (b && b.owner !== pid) { const was = b.owner; b.owner = pid; if (!silent && pid === this.me.id) this.log(`${WAR_BUILD[b.type].name} erobert!`); if (!silent && was === this.me.id) { const q = this.lostQ || (this.lostQ = {}); q[b.type] = (q[b.type] || 0) + 1; } }
     if (!silent) { this.paint(i); const w = M.w; this.paint(i - 1); this.paint(i + 1); this.paint(i - w); this.paint(i + w); }
   },
@@ -294,6 +325,7 @@ const War = {
   attack(pid, target, troops, tx, ty) {
     const p = this.players[pid - 1]; troops = Math.min(Math.floor(troops), p.troops); if (troops < 10 || target === pid) return false;
     if (target && this.allied(pid, target)) return false;
+    if (target && this.players[target - 1].safeUntil > this.t) return false;
     if (target) this.lastHit[pid + '-' + target] = this.t;
     let a = this.attacks.find(a => a.att === pid && a.def === target);
     if (!a) {
@@ -310,7 +342,8 @@ const War = {
   stepAttack(a) {
     const M = this.map, att = this.players[a.att - 1], def = a.def ? this.players[a.def - 1] : null;
     if (!att.alive) return false;
-    let budget = 2 + Math.sqrt(a.troops) / 7, won = 0, short = false;
+    let budget = (2 + Math.sqrt(a.troops) / 7) * (att.tr.speed || 1) * (this.wOn(att, 'rush') ? 3 : 1), won = 0, short = false;
+    const ev = this.event ? this.event.id : '', esel = this.wOn(att, 'esel'), dial = this.wOn(att, 'dialect'), fire = this.wOn(att, 'firework');
     const drop = k => { const i = a.cand[k]; a.cand[k] = a.cand[a.cand.length - 1]; a.cand.pop(); a.inSet.delete(i); };
     while (budget > 0 && a.troops > 0 && a.cand.length) {
       // aus einer Stichprobe den besten Kandidaten nehmen: viele eigene Nachbarn, nahe am Zielpunkt
@@ -327,8 +360,16 @@ const War = {
       if (bestK < 0 || bestK >= a.cand.length || a.cand[bestK] !== bestI) { budget -= .5; continue; }
       const i = bestI;
       // Heimat zuerst: freies Land der eigenen Gemeinde ist billig, fremdes teurer
+      const hm = M.hoehe[i] || 500;
       let c = M.cost[i] * 1.6 * (M.gem[i] === a.att ? .5 : 1.6), dens = 0;
-      if (def) { dens = Math.min(10, def.troops / Math.max(1, def.cells)); c = M.cost[i] * (2.5 + dens * 1.1) * this.defense(i, def.id) * (def.traitorUntil > this.t ? .6 : 1) * (M.gem[i] === def.id ? 1.6 : 1); }
+      if (def) {
+        const home = M.gem[i] === def.id, dt = def.tr; dens = Math.min(10, def.troops / Math.max(1, def.cells));
+        c = M.cost[i] * (2.5 + (dial ? 0 : dens) * 1.1) * (def.traitorUntil > this.t ? .6 : 1) * (esel ? 1 : this.defense(i, def.id) * (home ? 1.6 : 1));
+        c *= (dt.def || 1) * (dt.defAt ? dt.defAt(hm, M.boden[i] & 15) : 1) * (home ? (dt.defHome || 1) * (this.wOn(def, 'fortress') ? 5 : 1) : 1) * (this.wOn(def, 'wet') ? 2 : 1) * this.ease;
+        if (ev === 'foehn' && hm < 600) c *= .6;
+      }
+      if (att.tr.atk) c *= att.tr.atk(hm); if (fire) c *= .5;
+      if ((ev === 'hochwasser' && hm < 455) || (ev === 'winter' && hm >= 1200)) c *= 2;
       // reicht es für dieses Feld nicht, ein anderes versuchen; die Resttruppen gehen nicht verloren
       if (a.troops < c) { short = true; budget -= 1; continue; }
       a.troops -= c; budget -= M.cost[i]; won++;
@@ -373,9 +414,9 @@ const War = {
     for (const p of this.players) {
       if (!p.alive) continue;
       const max = this.maxTroops(p), T = p.troops;
-      p.growth = (max * .006 + T * .06) * Math.max(0, 1 - T / max) * (p.bot ? this.lvl.grow : 1);
+      p.growth = (max * .006 + T * .06) * Math.max(0, 1 - T / max) * (p.bot ? this.lvl.grow : 1) * (p.tr.grow || 1) * (this.wOn(p, 'candle') ? 2 : 1) * (this.event && this.event.id === 'fasnacht' && this.event.gem === p.id ? 0 : 1);
       p.troops = T > max ? T - (T - max) * .02 : Math.min(max, T + p.growth * .1);
-      p.goldRate = WAR_MODELS[WAR_MODEL].gold(p.cells, p.pers, p.jobs) + this.count(p, 'markt') * 6;
+      p.goldRate = (WAR_MODELS[WAR_MODEL].gold(p.cells, p.pers, p.jobs) + this.count(p, 'markt') * 6) * (p.tr.gold || 1) * (this.event && this.event.id === 'feiertag' ? 2 : 1);
       p.gold += p.goldRate * .1;
     }
     this.attacks = this.attacks.filter(a => this.stepAttack(a));
@@ -394,7 +435,7 @@ const War = {
       for (const p of al) { const sh = p.cells / M.land; p.peak = Math.max(p.peak || 0, sh); if (!this.over && this.t > COLLAPSE_AFTER && sh < COLLAPSE_SHARE) this.collapse(p); }
     }
     for (const p of this.players) if (p.bot && p.alive && this.t >= p.nextAi) { this.botThink(p); p.nextAi = this.t + 1.2 + Math.random() * 2.2; }
-    if (k % 10 === 0) { this.labels(); this.updateHud(); this.pactTick(); }
+    if (k % 10 === 0) { this.eventTick(); this.labels(); this.updateHud(); this.pactTick(); }
     if (this.trace && k % 150 === 0) { const me = this.me;
       this.trace.snaps.push([Math.round(this.t), me.cells, Math.round(me.troops), this.maxTroops(me), Math.round(me.gold), Math.round(me.growth || 0), this.attacks.filter(a => a.def === me.id).length, this.attacks.filter(a => a.att === me.id).length, this.buildings.filter(b => b.owner === me.id).length,
         this.players.filter(p => p.alive).sort((a, b) => b.cells - a.cells).slice(0, 5).map(p => [p.id, p.cells, Math.round(p.troops)])]);
@@ -427,6 +468,8 @@ const War = {
     const max = this.maxTroops(p);
     // in der Not Söldner anwerben
     if (p.troops < max * .15 && (p.merc || 0) < BOT_MERC_MAX && p.gold >= this.costOf(p, 'soeldner') * 1.2) this.hire(p);
+    // Geheimwaffe zur Abwehr, wenn ein grosser Angriff läuft
+    if (!p.wUsed && p.tr.w && !p.tr.w.off && this.t > 240) { let inc = 0; for (const a of this.attacks) if (a.def === p.id) inc += a.troops; if (inc > p.troops * .6 && inc > max * .1) this.useWeapon(p); }
     // bauen
     const type = Math.random() < .5 ? 'siedlung' : Math.random() < .6 ? 'markt' : 'burg', cost = this.costOf(p, type);
     if (p.gold >= cost * 1.5 && this.buildings.filter(b => b.by === p.id).length < 1 + p.cells / 4000) { const i = this.randomOwnCell(p, type === 'burg'); if (i >= 0) this.place(p, type, i); }
@@ -452,13 +495,48 @@ const War = {
         if (score < best) { best = score; target = q.id; }
       }
       if (target < 0 && neutral > 0) target = 0;
-      if (target > 0 && best > 1.4 && neutral > 0) target = 0;
-      if (target > 0 && best > 2.2) return;
+      if (target > 0 && best > 1.4 / this.ease && neutral > 0) target = 0;
+      if (target > 0 && best > 2.2 / this.ease) return;
     }
     if (target < 0) return;
     const tq = target ? this.players[target - 1] : null;
     const tx = tq ? tq.lx : p.lx + (Math.random() - .5) * 200, ty = tq ? tq.ly : p.ly + (Math.random() - .5) * 200;
+    // Geheimwaffe für den Angriff (einmal pro Partie, nicht in den ersten Minuten)
+    if (target && !p.wUsed && p.tr.w && p.tr.w.off && this.t > 240 && Math.random() < .3) this.useWeapon(p);
     this.attack(p.id, target, p.troops * (target ? .35 : .25), tx, ty);
+  },
+  /* ---------- Geheimwaffen ---------- */
+  useWeapon(p) {
+    const w = p.tr && p.tr.w, me = this.me; if (!w || p.wUsed || !p.alive || this.over || this.phase !== 'play') return false;
+    p.wUsed = true; p.wUntil = this.t + w.dur; let hitMe = false; const max = this.maxTroops(p);
+    if (w.id === 'volley') { for (const q of this.players) if (q.alive && q !== p && this.adj && this.adj[p.id][q.id] && !this.allied(p.id, q.id)) { q.troops *= .85; if (q === me) hitMe = true; } }
+    else if (w.id === 'refill') p.troops = Math.min(max, p.troops + max * .4);
+    else if (w.id === 'shell') { for (const a of this.attacks) if (a.def === p.id) { a.troops *= .5; if (a.att === me.id) hitMe = true; } }
+    else if (w.id === 'pause') { p.safeUntil = this.t + w.dur; this.attacks = this.attacks.filter(a => a.def !== p.id || (this.players[a.att - 1].troops += Math.max(0, a.troops), a.att === me.id && (hitMe = true), false)); }
+    if (p === me) { this.banner(w.name.toUpperCase(), '#ffec27'); this.log(`Geheimwaffe ${w.name}: ${w.text}`, 'good'); }
+    else this.log(`${this.boss(p)} zündet die Geheimwaffe: ${w.name}!`, hitMe ? 'bad' : 'warn');
+    snd('weapon'); this.updateHud(); return true;
+  },
+  /* ---------- Ereignisse und Schlussphase ---------- */
+  eventTick() {
+    const me = this.me;
+    // Schlussphase: Angriffe auf Gegner werden laufend billiger, damit die Partie ein Ende findet
+    this.ease = this.t <= EASE_AFTER ? 1 : Math.max(EASE_MIN, 1 - (this.t - EASE_AFTER) / EASE_SPAN * (1 - EASE_MIN));
+    const stage = this.t > EASE_AFTER + EASE_SPAN ? 3 : this.t > EASE_AFTER + EASE_SPAN / 2 ? 2 : this.t > EASE_AFTER ? 1 : 0;
+    if (stage > this.easeSaid) { this.easeSaid = stage; if (stage === 1) this.banner('ENTSCHEIDUNG NAHT', '#ffa300'); this.log(['', 'Minute 12: Ab jetzt werden Angriffe auf Gegner laufend billiger.', 'Die Fronten bröckeln: Angriffe auf Gegner kosten nur noch 65 %.', 'Endkampf: Angriffe auf Gegner kosten nur noch 30 %.'][stage], 'warn'); snd('event'); }
+    const E = this.event;
+    if (E && this.t >= E.until) { this.event = null; this.log(`${E.name} ist vorbei.`); this.nextEv = this.t + 150 + Math.random() * 60; }
+    else if (!E && this.t >= this.nextEv && !this.over) {
+      const def = WAR_EVENTS[Math.floor(Math.random() * WAR_EVENTS.length)], ev = this.event = { id: def.id, name: def.name, until: this.t + def.dur, text: def.text };
+      if (def.id === 'fasnacht') { const al = this.players.filter(p => p.alive), g = al[Math.floor(Math.random() * al.length)]; ev.gem = g.id; ev.text = `${g.name} ${def.text}`; }
+      this.banner(def.name, '#29adff'); this.log(`${def.name}: ${ev.text}`, ev.gem === me.id ? 'bad' : 'warn'); snd('event');
+    }
+    const el = $('#wEvent'); if (!el) return; const lines = [];
+    if (this.event) lines.push(`<b>${esc(this.event.name)} ${Math.max(0, Math.ceil(this.event.until - this.t))} s</b> ${esc(this.event.text)}`);
+    if (me.tr.w && me.wUntil > this.t) lines.push(`<b class="w">${esc(me.tr.w.name.toUpperCase())} ${Math.ceil(me.wUntil - this.t)} s</b>`);
+    if (me.safeUntil > this.t) lines.push(`<b class="w">NIEMAND GREIFT DICH AN ${Math.ceil(me.safeUntil - this.t)} s</b>`);
+    if (this.ease < 1) lines.push(`<b class="e">SCHLUSSPHASE: ANGRIFFE AUF GEGNER ${Math.round(this.ease * 100)} %</b>`);
+    const html = lines.join('<br>'); if (el._h !== html) { el._h = html; el.innerHTML = html; el.hidden = !html; }
   },
   // Schutz des Spielers vor zu vielen gleichzeitigen Angreifern. Zählt nur ernsthafte Angriffe (mind. 3 % des Truppen-Maximums
   // des Angreifers). Mit LEADER_HUNT wäre der Führende ab Minute 6 und 10 % Land ungeschützt (zurzeit aus).
@@ -547,20 +625,24 @@ const War = {
     }
     if (o === me.id) { toast('Das ist dein Gebiet. Tippe auf neutrales Land oder einen Nachbarn.'); return; }
     if (o && this.allied(me.id, o)) { toast(`${this.players[o - 1].name} ist mit dir verbündet. Bündnis zuerst in der Rangliste brechen.`); return; }
+    if (o && this.players[o - 1].safeUntil > this.t) { toast(`${this.players[o - 1].name} ist gerade unangreifbar (Geheimwaffe).`); return; }
     const sent = Math.floor(me.troops * this.ratio), ok = this.attack(me.id, o, sent, i % M.w, Math.floor(i / M.w)); if (ok) snd(o ? 'charge' : 'tap');
     if (!ok) toast(sent < 10 ? 'Zu wenig Truppen.' : 'Keine gemeinsame Grenze.');
     else if (o) this.log(`Angriff auf ${this.players[o - 1].name} mit ${fmtK(sent)} Truppen.`);
     this.updateHud();
   },
-  hover(sx, sy) {
+  hover(sx, sy, sticky) {
     if (!this.map) return; const i = this.cellAt(sx, sy), tip = $('#wTip');
     if (i < 0 || !this.map.gem[i] || this.phase === 'off') { tip.hidden = true; return; }
-    const M = this.map, o = this.owner[i], q = o ? this.players[o - 1] : null, c = M.cost[i];
+    const M = this.map, o = this.owner[i], q = o ? this.players[o - 1] : null, c = M.cost[i], me = this.me;
     const terr = c === Infinity ? 'WASSER' : c < 1.3 ? 'LEICHT' : c < 2 ? 'MITTEL' : c < 3 ? 'SCHWER' : 'SEHR SCHWER';
-    const lines = [q ? `<b style="color:${q.color}">${esc(q.name.toUpperCase())}</b>${q === this.me ? ' (DU)' : this.me && this.allied(q.id, this.me.id) ? ' (VERBÜNDET)' : ''}` : '<b>FREIES LAND</b>'];
-    if (q && q !== this.me) lines.push(`TRUPPEN ${fmtK(q.troops)}`);
-    if (c !== Infinity) lines.push(`EROBERN: ${terr}${q && q !== this.me && M.gem[i] === q.id ? ', HEIMVORTEIL' : ''}${q && this.defense(i, q.id) > 1 ? ', BURG' : ''}`); else lines.push('NICHT EROBERBAR');
-    tip.hidden = false; tip.style.left = sx + 14 + 'px'; tip.style.top = sy + 14 + 'px'; tip.innerHTML = lines.join('<br>');
+    const lines = [q ? `<b style="color:${q.color}">${esc(q.name.toUpperCase())}</b>${q === me ? ' (DU)' : me && this.allied(q.id, me.id) ? ' (VERBÜNDET)' : ''}` : '<b>FREIES LAND</b>'];
+    if (q && q !== me) lines.push(`TRUPPEN ${fmtK(q.troops)}`);
+    if (c !== Infinity) lines.push(`EROBERN: ${terr}${q && q !== me && M.gem[i] === q.id ? ', HEIMVORTEIL' : ''}${q && this.defense(i, q.id) > 1 ? ', BURG' : ''}`); else lines.push('NICHT EROBERBAR');
+    if (sticky) { lines.push(`${Math.round(M.hoehe[i] || 0)} M Ü. M.`); if (q && q !== me && this.phase === 'play' && q.tr.plus) lines.push(`+ ${esc(q.tr.plus)}`, `- ${esc(q.tr.minus)}`); }
+    tip.hidden = false; tip.innerHTML = lines.join('<br>');
+    // im Bild halten; beim langen Druck über dem Finger
+    const w = tip.offsetWidth, h = tip.offsetHeight; tip.style.left = clamp(sticky ? sx - w / 2 : sx + 14, 6, innerWidth - w - 6) + 'px'; tip.style.top = clamp(sticky ? sy - h - 28 : sy + 14, 6, innerHeight - h - 6) + 'px';
   },
   zoomAt(sx, sy, f) {
     if (this.is3D()) { this.cam.s = clamp(this.cam.s * f, this.minS || .3, 40); return; }
@@ -570,8 +652,9 @@ const War = {
   fit() { const M = this.map, top = 64, bot = this.W < 700 ? 150 : 100; this.minS = Math.min(this.W / M.w, (this.H - top - bot) / M.h) * .95; this.cam.s = this.minS; this.cam.x = M.w / 2; this.cam.y = M.h / 2 + (bot - top) / 2 / this.cam.s; },
   clampCam() { const M = this.map; this.cam.x = clamp(this.cam.x, 0, M.w); this.cam.y = clamp(this.cam.y, 0, M.h); },
   updateBuildBtns() {
-    document.querySelectorAll('#wBuild button').forEach(b => { const t = b.dataset.b, c = this.me ? this.costOf(this.me, t) : WAR_BUILD[t].cost; b.querySelector('small').textContent = fmtK(c) + ' Gold'; b.querySelector('em').textContent = WAR_BUILD[t].eff; b.setAttribute('aria-pressed', this.build === t); b.classList.toggle('poor', !this.me || this.me.gold < c);
+    document.querySelectorAll('#wBuild button').forEach(b => { const t = b.dataset.b, c = this.me ? this.costOf(this.me, t) : WAR_BUILD[t].cost; b.querySelector('small').innerHTML = fmtK(c) + '<u> Gold</u>'; b.querySelector('em').textContent = WAR_BUILD[t].eff; b.setAttribute('aria-pressed', this.build === t); b.classList.toggle('poor', !this.me || this.me.gold < c);
       if (t === 'soeldner') { const left = Math.max(0, MERC_MAX - (this.me ? this.me.merc || 0 : 0)); b.dataset.left = left + '×'; b.title = `Söldner: sofort +20 % Truppen für Gold. Noch ${left} von ${MERC_MAX} Anwerbungen.`; if (!left) { b.querySelector('small').textContent = 'GENUTZT'; b.classList.add('poor'); } } });
+    const wb = $('#wWeapon'), mw = this.me && this.me.tr.w; if (wb && mw) { const used = this.me.wUsed; wb.classList.toggle('used', !!used); wb.title = `Geheimwaffe ${mw.name}: ${mw.text} Einmal pro Partie.`; const h = `<i>${Spr.img('stern', 2)}</i><span>${esc(mw.name.toUpperCase())}</span><small>${used ? 'VERBRAUCHT' : 'GEHEIMWAFFE'}</small>`; if (wb._h !== h) { wb._h = h; wb.innerHTML = h; } }
     if (this.build && this.me && this.me.gold < this.costOf(this.me, this.build)) { this.build = null; document.querySelectorAll('#wBuild button').forEach(b => b.setAttribute('aria-pressed', false)); }
   },
   updateHud() {
@@ -592,13 +675,13 @@ const War = {
     let rows = open ? all : all.filter(p => p.alive).slice(0, 3); if (!open && !rows.includes(me)) rows = rows.concat([me]);
     const row = p => {
       const k = all.indexOf(p), pact = this.pacts.get(this.pk(me.id, p.id)), left = pact ? Math.max(0, Math.round(pact.until - this.t)) : 0;
-      const act = !open ? '' : p === me || !p.alive ? `<button class="ph" tabindex="-1" aria-hidden="true">${L(Spr.img('pakt', 1), 'BÜNDNIS')}</button>` : pact ? `<button class="brk" data-a="break" data-p="${p.id}" title="Bündnis brechen (du giltst ${TRAITOR_TIME} s als Verräter)">${L(Spr.img('bruch', 1), 'BRECHEN')}</button>` : this.refused[p.id] > this.t ? `<button disabled title="Abgelehnt, bald wieder möglich">${L(Spr.img('pakt', 1), 'BÜNDNIS')}</button>` : `<button data-a="offer" data-p="${p.id}" title="Bündnis anbieten">${L(Spr.img('pakt', 1), 'BÜNDNIS')}</button>`;
+      const act = !open ? '' : p === me || !p.alive ? `<button class="ph" tabindex="-1" aria-hidden="true">${L(Spr.img('pakt', 1), 'BÜNDNIS')}</button>` : pact ? `<button class="ally" data-a="ally" data-p="${p.id}" title="Verbündeter: Hilfe rufen, Gold oder Truppen schicken, Bündnis brechen">${L(Spr.img('pakt', 1), 'AKTION')}</button>` : this.refused[p.id] > this.t ? `<button disabled title="Abgelehnt, bald wieder möglich">${L(Spr.img('pakt', 1), 'BÜNDNIS')}</button>` : `<button data-a="offer" data-p="${p.id}" title="Bündnis anbieten">${L(Spr.img('pakt', 1), 'BÜNDNIS')}</button>`;
       return `<div class="${p === me ? 'me' : ''}${p.alive ? '' : ' dead'}" data-f="${p.id}"><i style="background:${p.color}"></i><em>${k + 1}.</em> ${esc(p.name)}${pact ? ` <small class="pact" title="Bündnis, noch ${left} s">${Spr.img('pakt', 1)}${wide ? 'VERBÜNDET ' : ''}${Math.ceil(left / 60)}M</small>` : ''}${p.traitorUntil > this.t ? ` ${Spr.img('warn', 1, 'Verräter')}` : ''}<span>${p.alive ? (p.cells / M.land * 100).toFixed(1) + ' %' : 'erobert'}</span>${open ? `<span class="tr">${p.alive ? fmtK(p.troops) : ''}</span>` : ''}${act}</div>`;
     };
     const html = rows.map(row).join('') + (wide ? '' : `<button class="more" data-a="toggle">${open ? 'WENIGER' : `ALLE ${all.length} GEMEINDEN`}</button>`) + `<div class="goal">ZIEL: ${WIN_SHARE * 100} %</div>`;
     const el = $('#wBoard'); el.classList.toggle('open', !!open); el.classList.toggle('wide', wide); if (el._html === html) return; el._html = html; el.innerHTML = html;
     el.querySelectorAll('[data-a]').forEach(b => b.onclick = e => { e.stopPropagation(); const a = b.dataset.a, q = this.players[(+b.dataset.p || 1) - 1];
-      if (a === 'toggle') this.boardOpen = !this.boardOpen; else if (a === 'offer') this.offer(me, q); else if (a === 'break') this.breakPact(me, q, true);
+      if (a === 'toggle') this.boardOpen = !this.boardOpen; else if (a === 'offer') this.offer(me, q); else if (a === 'ally') this.allyMenu(q);
       el._html = null; this.renderBoard(); });
     el.querySelectorAll('[data-f]').forEach(d => d.onclick = () => { const q = this.players[+d.dataset.f - 1]; if (q.alive) { this.cam.x = q.lx; this.cam.y = q.ly; this.clampCam(); } });
   },
@@ -612,7 +695,7 @@ const War = {
     if (!bot.alive || !q.alive || q.traitorUntil > this.t) return 0;
     const hit = Math.max(this.lastHit[q.id + '-' + bot.id] || -999, this.lastHit[bot.id + '-' + q.id] || -999);
     if (this.t - hit < 45) return 0;
-    const L = this.leader(), land = this.map.land; let w = .3;
+    const L = this.leader(), land = this.map.land; let w = .3 + (q.tr.pact || 0);
     if (L && L !== bot && L !== q && L.cells > land * .2) w += .4;          // gemeinsamer starker Gegner
     if (L === q && q.cells > land * .25) w -= .35;                           // dem Führenden hilft man nicht
     if (q.cells > bot.cells * 1.3) w += .15;                                 // Schutz durch Stärkere
@@ -641,7 +724,7 @@ const War = {
       const [a, b] = k.split('-').map(n => this.players[n - 1]);
       if (!a.alive || !b.alive || v.until <= this.t) { this.pacts.delete(k); if (a.alive && b.alive) this.log(`Das Bündnis ${a.name} und ${b.name} ist abgelaufen.`, a === me || b === me ? 'warn' : ''); continue; }
       const other = a === me ? b : b === me ? a : null;
-      if (other && !v.warned && v.until - this.t < 25) { v.warned = true; this.ask(`Bündnis mit ${other.name} endet bald. Verlängern?`, 'Verlängern', () => { if (Math.random() < this.willing(other, me) + .25) { v.until = this.t + PACT_TIME; v.warned = false; this.log(`Bündnis mit ${other.name} verlängert.`, 'good'); } else this.log(`${other.name} will nicht verlängern.`); }); }
+      if (other && !v.warned && v.until - this.t < 25) { v.warned = true; this.ask(`Bündnis mit ${other.name} endet bald. Verlängern?`, 'Verlängern', () => { if (v.bond || Math.random() < this.willing(other, me) + .25) { v.until = this.t + PACT_TIME; v.warned = false; this.log(`Bündnis mit ${other.name} verlängert.`, 'good'); } else this.log(`${other.name} will nicht verlängern.`); }); }
       // Bots brechen selten ein Bündnis mit einem schwachen Partner, wenn kein freies Land mehr da ist
       for (const [x, y] of [[a, b], [b, a]]) if (x.bot && this.t - v.since > 120 && this.adj && !this.adj[x.id][0] && y.troops / Math.max(1, y.cells) < .35 * x.troops / Math.max(1, x.cells) && Math.random() < .02) { this.breakPact(x, y, true); break; }
     }
@@ -658,6 +741,47 @@ const War = {
     if (y === me) this.ask(`${this.boss(x)} bietet dir ein Bündnis an (${PACT_TIME / 60} Minuten).`, 'Annehmen', () => { if (x.alive && !this.allied(x.id, me.id)) this.makePact(x, me); });
     else this.makePact(x, y);
   },
+  // Aktionen mit einem Verbündeten: Hilfe rufen, Gold oder Truppen schicken, Bündnis brechen
+  allyMenu(q) {
+    const me = this.me; if (!q.alive || !this.allied(me.id, q.id)) return;
+    const gold = Math.floor(me.gold * .25), tr = Math.floor(me.troops * .2);
+    this.menu(`${this.boss(q)}, dein Verbündeter`, [
+      { label: 'HILFE RUFEN', hint: 'greift deinen Gegner an', fn: () => this.callHelp(q) },
+      { label: `GOLD SCHICKEN (${fmtK(gold)})`, hint: 'ein Viertel deines Goldes', off: gold < 50, fn: () => this.gift(q, 'gold') },
+      { label: `TRUPPEN SCHICKEN (${fmtK(tr)})`, hint: 'ein Fünftel deiner Truppen', off: tr < 100, fn: () => this.gift(q, 'troops') },
+      { label: 'BÜNDNIS BRECHEN', cls: 'red', hint: `${TRAITOR_TIME} s Verräter`, fn: () => this.breakPact(me, q, true) },
+    ]);
+  },
+  // Der Verbündete greift an: zuerst den stärksten Angreifer auf dich, sonst dein letztes Ziel (jeweils an seiner Grenze)
+  callHelp(q) {
+    const me = this.me, A = this.adj; if (!q.alive || !this.allied(me.id, q.id)) return;
+    if (this.t < q.helpT) { this.log(`${this.boss(q)} hat gerade erst geholfen. Frag in ${Math.ceil(q.helpT - this.t)} s wieder.`); return; }
+    const ok = x => x && x.alive && x !== q && x !== me && A && A[q.id][x.id] && !this.allied(q.id, x.id) && !(x.safeUntil > this.t);
+    let target = null, best = 0;
+    for (const a of this.attacks) if (a.def === me.id && a.troops > best && ok(this.players[a.att - 1])) { best = a.troops; target = this.players[a.att - 1]; }
+    if (!target) { let last = -1e9; for (const x of this.players) { const h = this.lastHit[me.id + '-' + x.id]; if (h != null && this.t - h < 90 && h > last && ok(x)) { last = h; target = x; } } }
+    q.helpT = this.t + 60;
+    if (!target) { this.log(`${this.boss(q)}: Kein gemeinsamer Gegner an meiner Grenze. Greif zuerst jemanden an, der auch an mich grenzt.`); return; }
+    if (q.troops < this.maxTroops(q) * .25) { this.log(`${this.boss(q)} hat zu wenig Truppen, um zu helfen.`); return; }
+    if (this.attack(q.id, target.id, q.troops * .4, target.lx, target.ly)) { this.log(`${this.boss(q)} greift ${target.name} an, um dir zu helfen.`, 'good'); snd('pact'); }
+    else this.log(`${this.boss(q)} kommt nicht an ${target.name} heran.`);
+  },
+  // Geschenk an den Verbündeten: stärkt ihn und das Bündnis (eine Minute länger, er verlängert danach sicher)
+  gift(q, kind) {
+    const me = this.me, pact = this.pacts.get(this.pk(me.id, q.id)); if (!q.alive || !pact || pact.until <= this.t) return;
+    if (kind === 'gold') { const g = Math.floor(me.gold * .25); if (g < 50) return; me.gold -= g; q.gold += g; this.log(`${fmtK(g)} Gold an ${q.name} geschickt.`, 'good'); }
+    else { const n = Math.floor(me.troops * .2); if (n < 100) return; me.troops -= n; q.troops += n; this.log(`${fmtK(n)} Truppen an ${q.name} geschickt.`, 'good'); }
+    pact.until = Math.min(pact.until + 60, this.t + PACT_TIME + 120); pact.bond = true; snd('pact'); this.updateHud();
+  },
+  // kleines Auswahlmenü über der Fussleiste
+  menu(title, opts) {
+    const el = $('#wMenu'), game = this.game; if (!el) return;
+    el.innerHTML = `<button class="px-x" aria-label="Schliessen">X</button><b>${esc(title)}</b>` + opts.map((o, k) => `<button class="mo${o.cls ? ' ' + o.cls : ''}" data-k="${k}"${o.off ? ' disabled' : ''}>${esc(o.label)}${o.hint ? `<small>${esc(o.hint)}</small>` : ''}</button>`).join('');
+    el.hidden = false; clearTimeout(this._mt); this._mt = setTimeout(() => this.closeMenu(), 15000);
+    el.querySelector('.px-x').onclick = () => this.closeMenu();
+    el.querySelectorAll('.mo').forEach(b => b.onclick = () => { this.closeMenu(); if (game === this.game && this.phase === 'play' && !this.over) { snd('tap'); opts[+b.dataset.k].fn(); } });
+  },
+  closeMenu() { const el = $('#wMenu'); if (el) el.hidden = true; clearTimeout(this._mt); },
   ask(msg, label, fn) {
     const el = $('#wFeed'), game = this.game; const d = document.createElement('div'); d.className = 'ask';
     d.innerHTML = `${esc(msg)} <button>${esc(label)}</button><button class="no">X</button>`; el.prepend(d);
@@ -670,10 +794,12 @@ const War = {
       { t: 'Kampf um Liechtenstein', b: `Du führst eine Gemeinde. Wer ${WIN_SHARE * 100} % des Landes hält, gewinnt. Die anderen zehn Gemeinden spielt der Computer.` },
       { sel: '#wTroopsBox', t: 'Truppen', b: 'Deine Truppen, dahinter das Maximum und das Wachstum pro Sekunde. Das Maximum steigt mit deiner Fläche und deinen Siedlungen. Am schnellsten wachsen sie bei etwa der Hälfte des Maximums. AM MAXIMUM WÄCHST NICHTS MEHR: dann angreifen oder Land dazugewinnen.' },
       { sel: '#wGoldBox', t: 'Gold', b: 'Gold kommt von den Einwohnern und Arbeitsplätzen in deinem Gebiet: Dorfzentren und Gewerbegebiete machen reich. Du brauchst es für Gebäude und Söldner.' },
-      { sel: '#wScoreBox', t: 'Punkte', b: 'Neutrales Feld 1 Punkt, feindliches Feld 3, Gebäude 50, ausgelöschte Gemeinde 5000, Sieg 50000 plus Zeitbonus. Schwache Startgemeinden zählen mehr (Faktor bis ×3).' },
+      { sel: '#wScoreBox', t: 'Punkte', b: 'Neutrales Feld 1 Punkt, feindliches Feld 3 (jedes Feld zählt nur beim ersten Mal), Gebäude 50, ausgelöschte Gemeinde 5000, Sieg 50000 plus Zeitbonus. Schwache Startgemeinden zählen mehr (Faktor bis ×3).' },
       { sel: '#w3d', t: 'Ansicht und Hilfe', b: 'Ziehen verschiebt die Karte, Mausrad oder zwei Finger zoomen. Zwei Finger gemeinsam hoch oder runter kippen die Karte in 3D, Drehen dreht sie. Am Computer mit der rechten Maustaste. Der Knopf 3D/2D schaltet um. Während die Anleitung offen ist, ruht das Spiel. Mit ? kommt sie wieder.' },
-      { sel: '#wBoard', t: 'Rangliste und Bündnisse', b: 'Die drei Führenden. Aufklappen zeigt alle Gemeinden. Mit ' + Spr.img('pakt', 1) + ' bietest du ein Bündnis an (5 Minuten). Verbündete greifen sich nicht an. Wer ein Bündnis bricht, gilt 30 s als Verräter.' },
-      { sel: '#wc', t: 'Ausbreiten', b: 'Tippe auf ungefärbtes Land neben deinem Gebiet. Talboden ist billig, Hang, Wald und Berge kosten viel mehr Truppen pro Feld. Hauptstrassen sind billig, Wasser geht nicht. Freies Land deiner eigenen Gemeinde kostet nur die Hälfte, fremdes mehr. Und daheim verteidigst du dich besser (Heimvorteil).' },
+      { sel: '#wBoard', t: 'Rangliste und Bündnisse', b: 'Die drei Führenden. Aufklappen zeigt alle Gemeinden. Mit ' + Spr.img('pakt', 1) + ' bietest du ein Bündnis an (5 Minuten). Verbündete greifen sich nicht an. Bei einem Verbündeten öffnet derselbe Knopf ein Menü: HILFE RUFEN (er greift deinen Gegner an), GOLD oder TRUPPEN SCHICKEN (hält das Bündnis länger) oder BRECHEN. Wer ein Bündnis bricht, gilt 30 s als Verräter.' },
+      { last: true, t: 'Ereignisse und Schlussphase', b: 'Alle paar Minuten passiert etwas im Ländle, für alle gleich: FÖHNSTURM (im Tal verteidigt man schlechter), RHEINHOCHWASSER (Talboden doppelt so teuer), STAATSFEIERTAG (doppeltes Gold), FASNACHT (eine Gemeinde wächst kurz nicht), WINTEREINBRUCH (Berge doppelt so teuer). Ab Minute 12 werden Angriffe auf Gegner laufend billiger, damit die Partie ein Ende findet.' },
+      { sel: '#wc', t: 'Ausbreiten', b: 'Tippe auf ungefärbtes Land neben deinem Gebiet. Langes Drücken auf ein Feld zeigt, wem es gehört und wie schwer es zu erobern ist. Talboden ist billig, Hang, Wald und Berge kosten viel mehr Truppen pro Feld. Hauptstrassen sind billig, Wasser geht nicht. Freies Land deiner eigenen Gemeinde kostet nur die Hälfte, fremdes mehr. Und daheim verteidigst du dich besser (Heimvorteil).' },
+      { sel: '#wWeapon', t: 'Geheimwaffe', b: 'Jedes Oberhaupt hat eine Stärke, eine Schwäche und eine Geheimwaffe. Die Geheimwaffe zündest du mit diesem Knopf, einmal pro Partie. Was sie tut, steht im Menü unter DIE GEMEINDEN und erscheint, wenn du den Knopf lange drückst oder mit der Maus darauf zeigst. Auch die Gegner haben eine.' },
       { sel: '.wr', t: 'Angriffsstärke', b: 'So viel Prozent deiner Truppen schickt ein Tippen los. Nicht verbrauchte Truppen kehren zurück. Nachbarn kosten mehr, je dichter sie besetzt sind.' },
       { sel: '#wBuild', t: 'Gebäude und Söldner', b: 'SIEDLUNG: +1500 Truppen-Maximum, also schnelleres Wachstum.<br>BURG: Gegner brauchen im Umkreis von 500 m dreimal so viele Truppen pro Feld.<br>MARKT: +6 Gold pro Sekunde.<br>SÖLDNER: sofort Truppen in Höhe von 20 % deines Maximums. Du kannst pro Partie 4 Mal anwerben, jedes Mal doppelt so teuer (400, 800, 1600, 3200 Gold), danach 60 s Pause. Die Zahl oben rechts am Knopf zeigt, wie oft du noch kannst.<br>Jedes weitere Gebäude derselben Art wird teurer.' },
     ];
@@ -682,7 +808,7 @@ const War = {
     const el = $('#wTut'); this.layout();
     // Reihenfolge nach Bildschirmposition: oben von links nach rechts, dann Rangliste, dann Karte, dann unten
     if (k === 0 || !this._tutSteps) {
-      const zone = st => { if (!st.sel) return [-1, 0]; if (st.sel === '#wBoard') return [1, 0]; if (st.sel === '#wc') return [2, 0]; const e = $(st.sel), r = e && e.getBoundingClientRect(); if (!r || !r.width) return [4, 0]; return [r.top + r.height / 2 < innerHeight * .4 ? 0 : 3, r.left]; };
+      const zone = st => { if (!st.sel) return [st.last ? 5 : -1, 0]; if (st.sel === '#wBoard') return [1, 0]; if (st.sel === '#wc') return [2, 0]; const e = $(st.sel), r = e && e.getBoundingClientRect(); if (!r || !r.width) return [4, 0]; return [r.top + r.height / 2 < innerHeight * .4 ? 0 : 3, r.left]; };
       this._tutSteps = this.tutSteps().map(st => ({ st, z: zone(st) })).sort((a, b) => a.z[0] - b.z[0] || a.z[1] - b.z[1]).map(x => x.st);
     }
     const steps = this._tutSteps;

@@ -144,6 +144,9 @@ const Snd = {
       case 'betray': this.tone(t, F('E5'), .25, this.w50, .15, F('D#4')); this.tone(t + .02, F('F5'), .25, this.w25, .1, F('E4')); this.tone(t + .28, F('B3'), .5, this.w50, .14, F('A#2')); break;
       case 'offer': this.tone(t, F('E6'), .5, 'tri', .25); this.tone(t, F('E6') * 2.01, .3, this.w12, .03); this.tone(t + .25, F('C6'), .7, 'tri', .25); this.tone(t + .25, F('C6') * 2.01, .4, this.w12, .03); break;
       case 'lost': this.hiss(t, .45, .5, 140); this.tone(t, 70, .45, 'tri', .6, 28); this.tone(t + .05, 200, .2, this.w50, .08, 60); break;
+      // Geheimwaffe: Donner und aufsteigender Lauf; Ereignis: zwei Hornstösse
+      case 'weapon': this.hiss(t, .5, .4, 160); this.tone(t, 60, .5, 'tri', .6, 28); ['C4', 'E4', 'G4', 'C5', 'E5', 'G5'].forEach((x, i) => this.tone(t + .12 + i * .06, F(x) * 2, i === 5 ? .4 : .07, this.w25, .15)); break;
+      case 'event': this.tone(t, F('G4'), .22, this.w50, .15); this.tone(t + .26, F('D4'), .5, this.w50, .15); this.tone(t + .26, F('D3'), .5, 'tri', .25); break;
       case 'fanfare': ['C5', 'C5', 'C5', 'G5'].forEach((x, k) => this.tone(t + k * .1, F(x), k === 3 ? .4 : .08, this.w25, .15)); break;
       case 'boom': this.hiss(t, .5, .4, 200); this.tone(t, 90, .3, 'tri', .5, 30); break;
       case 'type': this.tone(t, 1500, .015, this.w12, .04); break;
@@ -389,10 +392,11 @@ const Kampf = {
       <span>GELÄNDE (STEILHEIT)</span>${bar(q.cost, max(x => x.cost))}<b>X${q.cost.toFixed(1)}</b>
       <span>ÜBER 1200 M</span>${bar(q.alp / q.cells, max(x => x.alp / x.cells))}<b>${Math.round(q.alp / q.cells * 100)} %</b>
       <span>PUNKTEFAKTOR</span>${bar(q.factor, 3)}<b>X${q.factor}</b></div>` : '';
-    const li = a => `<ul>${a.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
+    const li = a => `<ul>${a.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`, tr = typeof WAR_TRAITS !== 'undefined' && WAR_TRAITS[n];
     this.panel(`<div class="ghead">${Spr.portraitImg(g.avatar, 5, g.leader)}<div><div class="gn" style="color:${col}">${esc(n.toUpperCase())}</div><h2>${esc(g.leader)}</h2><div class="gt">${esc(g.title)}</div><p class="gq">«${esc(g.quote)}»</p></div></div>
       <h3>CHARAKTER</h3><p>${esc(g.character)}</p>
       <h3>STÄRKEN</h3>${li(g.strengths)}<h3>SCHWÄCHEN</h3>${li(g.weaknesses)}<h3>GEHEIMWAFFE</h3><p>${esc(g.secret)}</p>
+      ${tr ? `<h3>IM SPIEL</h3><div class="gtr"><p><b class="p">+</b> ${esc(tr.plus)}</p><p><b class="m">-</b> ${esc(tr.minus)}</p><p><b class="w">${Spr.img('stern', 1)}</b> ${esc(tr.w.name.toUpperCase())}: ${esc(tr.w.text)} Einmal pro Partie.</p></div>` : ''}
       ${stats}<p class="gname">NAMENSPATIN/-PATE: ${esc(g.flur)}</p>
       <div class="trow" style="margin-top:14px"><button class="px-btn red gplay" id="gPlay">MIT ${esc(n.toUpperCase())} SPIELEN</button></div>
       <div class="trow gnav"><button class="px-btn" id="gPrev">&lt;</button><button class="px-btn" id="pClose">LISTE</button><button class="px-btn" id="gNext">&gt;</button></div>`);
